@@ -29,7 +29,7 @@ export function BoardPanel({
   drawer?: boolean;
   onClose: () => void;
   onMaterials: () => void;
-  onObject: (item: WorkItem) => void;
+  onObject: (item: Pick<WorkItem, "id" | "route" | "readonly">) => void;
   onAsk: (question: string) => void;
 }) {
   const [selected, setSelected] = useState<{

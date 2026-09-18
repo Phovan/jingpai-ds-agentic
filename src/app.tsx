@@ -8,7 +8,10 @@ import {
 } from "./domain/briefing";
 import type { BrainContext } from "./domain/experience";
 import { EosExecutionPanel } from "./components/eos-execution-panel";
-import { EOS_STEPS } from "./domain/eos";
+import { eosSteps } from "./domain/eos";
+import { eosStageAnswer } from "./domain/eos-dialogue";
+import { narrativeText } from "./domain/narrative";
+import "./catalog.css";
 import { importFiles, addConversationMaterials } from "./domain/material-files";
 import { Notifications, ObjectSearch } from "./components/object-dialogs";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -34,6 +37,7 @@ import {
   resetDemo,
   startAgentClock,
   storageWarning,
+  readDemoState,
 } from "./domain/store";
 import { usePersonal } from "./domain/personal";
 import { TOOLS } from "./domain/workbench";
@@ -56,7 +60,6 @@ import { FollowButton } from "./pages/workbench";
 import { OntologyWorkbench as Workbench } from "./pages/ontology-workbench";
 import {
   visibleEntities,
-  DEFAULT_TABS,
   configuredTabs,
   type EntityType,
 } from "./domain/ontology";
@@ -65,6 +68,7 @@ import { Conversation } from "./pages/conversation";
 import { ContextComposer } from "./components/context-composer";
 import { ContextDetails } from "./components/context-details";
 import { appendQuestion, routeContext } from "./domain/experience";
+import type { EntityDraft } from "./domain/entity-creation";
 
 function readRole() {
   try {
@@ -105,13 +109,14 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
   const narrow = useMobile(1279);
   const [executionIssue, setExecutionIssue] = useState<string | null>(null);
   const eosRun = state.eosRuns?.find((r) => r.issueId === executionIssue);
+  const eosClick = useRef(false);
   const uploading = useRef(false);
   const [boards, setBoards] = useState(false);
   const [boardDrawer, setBoardDrawer] = useState(false);
   const entities = visibleEntities(state, role);
   const { nav, setField, restoreTick } = useBrowserNavigation(
     role,
-    personal.data.ontologyTabs?.[0] || DEFAULT_TABS[role][0] || "",
+    configuredTabs(role, personal.data.ontologyTabs)[0] || "",
     entities.map((e) => e.id),
     personal.data.threads.map((t) => t.id),
   );
@@ -323,6 +328,24 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
     if (narrow) setBoardDrawer(true);
     else setBoards(true);
   }
+  async function confirmCreation(draft: EntityDraft): Promise<string> {
+    const existing = readDemoState().createdEntities?.find(
+      (e) => e.requestId === draft.requestId,
+    );
+    if (existing) return existing.id;
+    await execute(role, { type: "catalog-create", draft }, state.version);
+    const saved = readDemoState().createdEntities?.find(
+      (e) => e.requestId === draft.requestId,
+    );
+    if (!saved) throw new Error("提交未保存，请重试。");
+    personal.update((p) => ({
+      ...p,
+      ontologyTabs: [
+        ...new Set([...configuredTabs(role, p.ontologyTabs), saved.kind]),
+      ],
+    }));
+    return saved.id;
+  }
   async function confirmReportAction(messageId: string) {
     const thread = personal.data.threads.find((t) => t.id === threadId);
     const message = thread?.messages.find((m) => m.id === messageId);
@@ -378,9 +401,18 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
     }
   }
   async function askContext(question: string, target: string | null) {
+    if (/^继续下一步[。！!\s]*$/.test(question.trim()) && context?.objectId) {
+      const run = readDemoState().eosRuns?.find(
+        (r) => r.issueId === context.objectId,
+      );
+      if (run) {
+        await eosInteract("next", run.issueId);
+        return;
+      }
+    }
     const issueId = context?.objectId;
     const launch =
-      !!issueId?.startsWith("ISS-") &&
+      (!!issueId?.startsWith("ISS-") || issueId === "I01") &&
       /(?:开始|继续)\s*EOS\s*实施/i.test(question);
     try {
       if (launch) {
@@ -405,8 +437,9 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
         );
         nextId = result.threadId;
         if (
-          context?.report ||
-          (context?.landing && /下发|布置/.test(question))
+          !result.data.threads.find((t) => t.id === nextId)?.messages.at(-1)
+            ?.entityDraft &&
+          (context?.report || (context?.landing && /下发|布置/.test(question)))
         ) {
           const reply = reportReply(state, role, p, context, question);
           const thread = result.data.threads.find((t) => t.id === nextId)!;
@@ -414,6 +447,11 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
             thread.messages[thread.messages.length - 1];
           message.answer = reply.answer;
           message.reportAction = reply.action;
+          message.nextQuestions = reply.action
+            ? ["这份汇报哪些结果仍需复核？"]
+            : reply.note
+              ? ["确认本期汇报"]
+              : ["补充关注：区分已交付、待验证与待核实事项", "确认本期汇报"];
           if (reply.note)
             result.data.reportDrafts = {
               ...p.reportDrafts,
@@ -433,7 +471,7 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
             (r) => r.issueId === issueId && r.status === "completed",
           )
             ? "此 Issue 的模拟实施已完成，交付包等待人工核对，不重复启动。点击执行详情查看各阶段证据。"
-            : "已接续此 Issue 的 EOS 实施演示。归因 Agent 核实事实与验收快照，研发 Agent 生成 Impl，Review Agent 独立审查并回流修复，验证 Agent 核对行为路径。\n\n执行过程与产物持续更新，可点击「执行详情」查看或停止。本次仅在本机模拟，不访问真实代码库，也不自动批准发布或确认业务价值。";
+            : "已开启逐步 EOS 演示：归因 Agent 的核对记录已就绪，研发、Review 与验证阶段尚未开始。\n\n点击「执行详情」后，可先查看归因结果，或点击「下一步」执行研发。每次只运行一个阶段；完成后停下等待你的选择。仅为本地模拟，不访问真实代码库，不自动批准发布或确认业务价值。";
         }
         return result.data;
       });
@@ -474,6 +512,72 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
     setBoardDrawer(false);
     setExecutionIssue(issueId);
   }
+  async function eosInteract(
+    action: "next" | "view" | "restart",
+    issueId: string,
+    index?: number,
+  ) {
+    if (eosClick.current) return;
+    eosClick.current = true;
+    try {
+      const before = readDemoState();
+      const previous = before.eosRuns?.find((r) => r.issueId === issueId);
+      if (!previous || !entities.some((e) => e.id === issueId))
+        throw new Error("执行记录不可见。");
+      if (action === "next" || action === "restart")
+        await execute(
+          role,
+          { type: "eos", action, issueId, expectedStep: previous.step },
+          before.version,
+        );
+      const current = readDemoState(),
+        run = current.eosRuns!.find((r) => r.issueId === issueId)!;
+      const stage =
+        action === "next"
+          ? run.step + 1
+          : action === "restart"
+            ? 0
+            : (index ?? run.step);
+      if (action === "view" && stage > run.step)
+        throw new Error("该阶段尚未完成，没有执行结果。");
+      const step = eosSteps(issueId)[stage];
+      let id = "";
+      personal.update((p) => {
+        const result = appendQuestion(
+          p,
+          current,
+          role,
+          action === "next"
+            ? `继续下一步：${step.agent} · ${step.title}`
+            : action === "restart"
+              ? "开始新一轮逐步演示"
+              : `查看${step.agent}执行的情况：${step.title}`,
+          context,
+          threadId,
+        );
+        id = result.threadId;
+        const message = result.data.threads
+          .find((t) => t.id === id)!
+          .messages.at(-1)!;
+        message.answer = eosStageAnswer(run, stage, action === "view");
+        message.eosIssueId = issueId;
+        message.eosRunId = run.id;
+        message.eosStepIndex = stage;
+        message.eosAdvance = action === "next";
+        message.nextQuestions = [];
+        return result.data;
+      });
+      openThread(id);
+      setExecutionIssue(issueId);
+      setMaterials(false);
+      setBoards(false);
+      setBoardDrawer(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "执行操作未完成。");
+    } finally {
+      eosClick.current = false;
+    }
+  }
   function exportExecution() {
     if (!eosRun || !threadId) return;
     personal.update((p) => ({
@@ -485,18 +589,21 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
           threadId,
           created: new Date().toISOString(),
           version: state.version,
-          title: `${eosRun.issueId} · EOS 执行记录`,
-          text: `# EOS 实施演示\n\n执行：${eosRun.id} · ${eosRun.status}\n冻结验收：${eosRun.acceptance}\n\n${EOS_STEPS.slice(
-            0,
-            eosRun.step + 1,
-          )
-            .map(
-              (x, i) =>
-                `## ${i + 1}. ${x.agent} · ${x.title}\n${x.detail}\n产物：${x.output}`,
+          title: `${entities.find((e) => e.id === eosRun.issueId)?.title || eosRun.issueId} · EOS 执行记录`,
+          text: narrativeText(
+            `# EOS 实施演示\n\n执行：${eosRun.id} · ${eosRun.status}\n冻结验收：${eosRun.acceptance}\n\n${eosSteps(
+              eosRun.issueId,
             )
-            .join(
-              "\n\n",
-            )}\n\n仅为本地模拟，不代表真实代码已合并或发布。人工核对与业务验收尚未完成。`,
+              .slice(0, eosRun.step + 1)
+              .map(
+                (x, i) =>
+                  `## ${i + 1}. ${x.agent} · ${x.title}\n${x.detail}\n产物：${x.output}`,
+              )
+              .join(
+                "\n\n",
+              )}\n\n仅为本地模拟，不代表真实代码已合并或发布。人工核对与业务验收尚未完成。`,
+            entities,
+          ),
         },
         ...p.materials,
       ],
@@ -568,6 +675,7 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
         aria-label="对话导航"
       >
         <ConversationSidebar
+          formatText={(text) => narrativeText(text, entities)}
           personal={personal}
           contextKey={context?.key}
           active={route === "chat" ? threadId : null}
@@ -609,7 +717,9 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
                 route === "chat" && context ? returnContext() : navigate("home")
               }
             >
-              {route === "chat" ? context?.title || title : "我的工作台"}
+              {route === "chat"
+                ? narrativeText(context?.title || title || "我的首页", entities)
+                : "我的工作台"}
             </button>
           </div>
           <div className="agentic-top-actions">
@@ -702,6 +812,8 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
                   personal={personal}
                   threadId={threadId}
                   onThread={openThread}
+                  onEntity={selectEntity}
+                  onCreate={confirmCreation}
                   onMaterials={showMaterials}
                   onFiles={attachFiles}
                   onContextAsk={askContext}
@@ -843,6 +955,7 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
             </main>
             {route !== "chat" && context && (
               <ContextComposer
+                state={state}
                 key={context.key}
                 context={context}
                 role={role}
@@ -879,6 +992,13 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
             !materials && (
               <EosExecutionPanel
                 run={eosRun}
+                entities={entities}
+                canAdvance={role === "研发"}
+                onNext={() => void eosInteract("next", eosRun.issueId)}
+                onView={(index) =>
+                  void eosInteract("view", eosRun.issueId, index)
+                }
+                onRestart={() => void eosInteract("restart", eosRun.issueId)}
                 drawer={narrow}
                 onClose={() => setExecutionIssue(null)}
                 onStop={() =>

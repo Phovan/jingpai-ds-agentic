@@ -28,6 +28,7 @@ export function ConversationSidebar({
   onWorkbench,
   onThread,
   onUtility,
+  formatText = (text: string) => text,
 }: {
   personal: PersonalController;
   contextKey?: string;
@@ -37,6 +38,7 @@ export function ConversationSidebar({
   onWorkbench: () => void;
   onThread: (id: string) => void;
   onUtility: (v: "settings" | "feedback") => void;
+  formatText?: (text: string) => string;
 }) {
   const { data, update } = personal;
   const [edit, setEdit] = useState<{
@@ -96,12 +98,12 @@ export function ConversationSidebar({
       >
         <button
           className="thread-link"
-          title={t.title}
+          title={formatText(t.title)}
           onClick={() => onThread(t.id)}
           aria-current={active === t.id ? "page" : undefined}
         >
           <MessageSquare size={15} />
-          <span>{t.title}</span>
+          <span>{formatText(t.title)}</span>
         </button>
         <button
           className="icon-button thread-options"

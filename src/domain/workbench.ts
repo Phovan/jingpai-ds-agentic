@@ -6,17 +6,18 @@ import {
   type State,
 } from "./model";
 import { getOperations, projectGap } from "./operations";
+import { PROJECT_DOMAINS, projectDomain } from "./project-domains";
 
-export const DOMAINS = [
-  "研发",
-  "产品",
-  "营销",
-  "服务",
-  "采购",
-  "运营",
-  "未分类",
-] as const;
-export type Domain = (typeof DOMAINS)[number];
+export const DOMAINS = [...PROJECT_DOMAINS, "未分类"] as const;
+// Legacy seeds remain readable; public views use the current taxonomy.
+export type Domain =
+  | (typeof DOMAINS)[number]
+  | "研发"
+  | "产品"
+  | "营销"
+  | "服务"
+  | "采购"
+  | "运营";
 export interface WorkItem {
   id: string;
   title: string;
@@ -61,6 +62,12 @@ export const TOOLS: { route: Route; title: string; description: string }[] = [
   { route: "agents", title: "执行中心", description: "PMO / EOS 执行回执" },
 ];
 export function workItems(s: State, role: Role): WorkItem[] {
+  return legacyWorkItems(s, role).map((item) => ({
+    ...item,
+    domain: projectDomain(item.domain) as Domain,
+  }));
+}
+function legacyWorkItems(s: State, role: Role): WorkItem[] {
   if (role === "系统管理员") return [];
   const n = nextAction(s);
   const gap =
@@ -98,7 +105,7 @@ export function workItems(s: State, role: Role): WorkItem[] {
     {
       id: "PRJ-003",
       title: "周报协同试点",
-      domain: "运营",
+      domain: "集团治理",
       kind: "项目",
       goal: "汇总耗时 ≤1h",
       actual: "0.8h",
@@ -407,7 +414,8 @@ export function filterItems(items: WorkItem[], f: WorkFilter) {
   const q = f.query.trim().toLowerCase();
   return items.filter(
     (i) =>
-      (f.domain === "全部" || i.domain === f.domain) &&
+      (f.domain === "全部" ||
+        projectDomain(i.domain) === projectDomain(f.domain)) &&
       (f.kind === "全部" || i.kind === f.kind) &&
       (!f.attention || i.attention) &&
       `${i.id} ${i.title} ${i.goal} ${i.next}`.toLowerCase().includes(q),

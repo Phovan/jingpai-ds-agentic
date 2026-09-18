@@ -14,12 +14,15 @@ import {
   reportContext,
   reportingItems,
   topicsFor,
+  periodSummary,
   type ReportView,
 } from "../domain/briefing";
 import type { Role, Route, State } from "../domain/model";
 import type { PersonalController } from "../domain/personal";
 import { Modal } from "../components/ui";
 import "./brain-home.css";
+import { EntityText } from "../components/entity-text";
+import { narrativeText } from "../domain/narrative";
 
 interface HubProps {
   state: State;
@@ -40,12 +43,22 @@ export function BrainHome({
   const [filter, setFilter] = useState("全部");
   const [reading, setReading] = useState<string | null>(null);
   const all = visibleEntities(state, role);
-  const important = all.filter(
-    (e) =>
-      e.attention &&
-      (DEFAULT_TABS[role].includes(e.kind) ||
-        personal.data.follows.includes(e.id)),
-  );
+  const important = all
+    .filter(
+      (e) =>
+        e.attention &&
+        (DEFAULT_TABS[role].includes(e.kind) ||
+          personal.data.follows.includes(e.id)),
+    )
+    .sort((a, b) => {
+      const order = ["管理层", "PMO", "项目经理"].includes(role)
+        ? ["P02", "P03", "P06", "P12", "X02", "D01"]
+        : ["X02", "D01", "D02", "P02", "P12"];
+      return (
+        (order.includes(a.id) ? order.indexOf(a.id) : 99) -
+        (order.includes(b.id) ? order.indexOf(b.id) : 99)
+      );
+    });
   const inbox = inboxItems(state, role);
   const unread = (id: string) => !personal.data.readInbox?.includes(id);
   const selected = inbox.find((i) => i.id === reading);
@@ -65,7 +78,7 @@ export function BrainHome({
           <h2>
             关键事项 <span>{important.length}</span>
           </h2>
-          <small>与我相关的风险与关键行动</small>
+          <small>风险与行动</small>
         </header>
         {important.length ? (
           important.slice(0, 2).map((e) => (
@@ -78,7 +91,7 @@ export function BrainHome({
                 >
                   {e.title}
                 </button>
-                <p>{e.risk}</p>
+                <p>{e.risk.split("。")[0]}。</p>
                 <small>
                   目标：{e.goal} · 当前：{e.actual} · {e.gap}
                 </small>
@@ -145,14 +158,20 @@ export function BrainHome({
                   className="business-link small"
                   onClick={() => onEntity(i.objectId)}
                 >
-                  订单协同优化 ↗
+                  {all.find((e) => e.id === i.objectId)?.title || i.objectId} ↗
                 </button>
               </div>
               <button
                 className="text-button"
                 onClick={() => (i.route ? navigate(i.route) : setReading(i.id))}
               >
-                {i.route ? "处理" : unread(i.id) ? "阅读" : "已读"}{" "}
+                {i.route
+                  ? "处理"
+                  : i.kind === "待处理"
+                    ? "核对"
+                    : unread(i.id)
+                      ? "阅读"
+                      : "已读"}{" "}
                 <ChevronRight size={14} />
               </button>
             </div>
@@ -170,7 +189,7 @@ export function BrainHome({
       <section className="home-panel">
         <header>
           <h2>周期汇报</h2>
-          <small>关注事项 → 达成情况 → 对话调整 → 确认</small>
+          <small>汇总 · 确认</small>
         </header>
         <div className="period-shortcuts">
           {PERIODS.map((period, i) => (
@@ -180,28 +199,40 @@ export function BrainHome({
               <small>
                 {
                   [
-                    "本周进展与阻塞",
-                    "月度目标与差距",
-                    "阶段成果与调整",
-                    "年度达成与复盘",
+                    "漏单核实、门禁与承诺",
+                    "目标差距、费用与预测",
+                    "项目组合与战略贡献",
+                    "交付、验证与能力复盘",
                   ][i]
                 }
               </small>
               <ChevronRight size={16} />
             </button>
           ))}
+          <button onClick={() => onReport({ period: "自定义Topic" })}>
+            <FileText size={20} />
+            <strong>自定义Topic</strong>
+            <small>
+              {topicsFor(state, role, personal.data).length} 个持续追踪主题 ·
+              新建与查看
+            </small>
+            <ChevronRight size={16} />
+          </button>
         </div>
       </section>
-      <p className="home-data-note">
-        演示数据 · 文件分享与团队摘要为本地演示，不代表真实通知已接入。
-      </p>
       {selected && (
         <Modal title={selected.title} onClose={() => setReading(null)}>
           <span className="home-type">{selected.kind} · 演示材料</span>
           <p>{selected.summary}</p>
           <p>
-            当前响应 {state.actual} 小时，目标 ≤{state.goal}{" "}
-            小时。请重点核对异常提醒的接口口径、交付承诺及上线后的效果验证；缺少证据的结论保留为待核实。
+            <EntityText
+              text={selected.body || selected.summary}
+              entities={all}
+              onSelect={(id) => {
+                setReading(null);
+                onEntity(id);
+              }}
+            />
           </p>
           <button
             className="business-link"
@@ -210,7 +241,10 @@ export function BrainHome({
               onEntity(selected.objectId);
             }}
           >
-            查看订单协同优化详情 →
+            查看
+            {all.find((e) => e.id === selected.objectId)?.title ||
+              selected.objectId}
+            详情 →
           </button>
           <div className="home-modal-actions">
             <button
@@ -355,6 +389,18 @@ export function ReportHub({
               项需要推进或补证。
               {topic?.summary || "先核对目标差距与依据，再确定下一周期行动。"}
             </p>
+            {state.catalogVersion === "v03" && (
+              <div
+                className="report-period-focus"
+                style={{ whiteSpace: "pre-wrap" }}
+              >
+                <EntityText
+                  text={periodSummary(state, role, personal.data, view)}
+                  entities={visibleEntities(state, role)}
+                  onSelect={onEntity}
+                />
+              </div>
+            )}
             <p className="home-data-note">
               {personal.data.follows.length || topic
                 ? "按当前关注范围汇总"
@@ -401,7 +447,9 @@ export function ReportHub({
               <div className="report-notes">
                 <h3>对话补充与调整</h3>
                 {draft.notes.map((n, i) => (
-                  <p key={i}>{n}</p>
+                  <p key={i}>
+                    {narrativeText(n, visibleEntities(state, role))}
+                  </p>
                 ))}
               </div>
             )}
@@ -411,7 +459,12 @@ export function ReportHub({
                   查看已确认快照 ·{" "}
                   {new Date(draft.confirmedAt).toLocaleString("zh-CN")}
                 </summary>
-                <pre>{draft.snapshot}</pre>
+                <pre>
+                  {narrativeText(
+                    draft.snapshot || "",
+                    visibleEntities(state, role),
+                  )}
+                </pre>
                 {draft.version !== state.version && (
                   <p className="warning-text">
                     业务事实已更新；上方是最新汇总，已确认快照保持原样，可重新核对后确认。
@@ -442,7 +495,9 @@ export function ReportHub({
                     <strong>
                       {f.period} · {f.recipients.join("、")}
                     </strong>
-                    <p>{f.content}</p>
+                    <p>
+                      {narrativeText(f.content, visibleEntities(state, role))}
+                    </p>
                     <small>
                       {new Date(f.at).toLocaleDateString("zh-CN")} · 管理层下发
                       · 演示组织

@@ -11,6 +11,7 @@ import { execute } from "../domain/store";
 import { Modal, Panel, Badge } from "../components/ui";
 import type { WorkspaceProps } from "./workspace";
 import { visibleEntities } from "../domain/ontology";
+import { PROJECT_DOMAINS } from "../domain/project-domains";
 
 type Field = { key: string; label: string; options?: string[]; type?: string };
 const field = (key: string, label: string, type = "text"): Field => ({
@@ -136,14 +137,7 @@ export function OperationsPage(p: WorkspaceProps) {
   const forms: Record<OpsAction, Field[]> = {
     "project-create": [
       field("title", "项目名称"),
-      choice("domain", "项目领域", [
-        "研发",
-        "产品",
-        "营销",
-        "服务",
-        "采购",
-        "运营",
-      ]),
+      choice("domain", "项目领域", [...PROJECT_DOMAINS]),
       field("goal", "业务目标"),
       field("target", "目标值", "number"),
       field("baseline", "基线值", "number"),

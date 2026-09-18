@@ -12,7 +12,7 @@ describe("ontology workbench", () => {
     ["项目经理", ["项目"]],
     ["业务Owner", ["需求"]],
     ["产品经理", ["系统", "需求"]],
-    ["研发", ["系统", "需求"]],
+    ["研发", ["需求", "Issue", "系统"]],
   ] as [Role, string[]][])("%s defaults match role intent", (role, expected) =>
     expect(configuredTabs(role)).toEqual(expected),
   );
@@ -20,7 +20,7 @@ describe("ontology workbench", () => {
     expect(configuredTabs("研发", ["项目", "项目", "invalid"])).toEqual([
       "项目",
     ]);
-    expect(configuredTabs("研发", [])).toEqual(["系统", "需求"]);
+    expect(configuredTabs("研发", [])).toEqual(["需求", "Issue", "系统"]);
     expect(configuredTabs("系统管理员", ["项目"])).toEqual([]);
   });
   it("adding project and strategy tabs never broadens developer read scope", () => {

@@ -8,6 +8,8 @@ import {
 import { TOOLS, workItems, operationItems } from "./workbench";
 import type { Personal } from "./personal";
 import { visibleEntities } from "./ontology";
+import { guidedReply } from "./catalog-dialogue";
+import { proposedCreation } from "./entity-creation";
 
 export interface BrainContext {
   landing?: boolean;
@@ -113,6 +115,8 @@ export function routeContext(
 }
 export function contextItems(state: State, role: Role, context: BrainContext) {
   const authorized = visibleEntities(state, role);
+  if (state.catalogVersion === "v03" && context.landing)
+    return authorized.filter((e) => ["P02", "P03", "P06"].includes(e.id));
   if (context.report)
     return authorized.filter((i) => context.followedIds?.includes(i.id));
   if (context.objectId)
@@ -160,6 +164,8 @@ export function contextualAnswer(
   context: BrainContext | undefined,
   question: string,
 ) {
+  if (role === "系统管理员" && /权限|授权|原文|撤权/.test(question))
+    return "同步成功仅表示抓取了已获授权的资料，不代表所有角色都能读取原文。连接管理员不能代替业务负责人授予评论或员工资料阅读权。\n\n建议核对连接范围、来源权限、授权版本和最后成功时间。来源撤权后停止新检索，历史引用标为待复核；管理层默认只看脱敏汇总。\n\n当前为本地配置演示，未读取真实业务原文，也不会自动同步知识库。";
   if (role === "系统管理员")
     return `当前已配置 ${(state.connections || []).length} 个来源。\n\n${(state.connections || []).map((c) => `${c.source}：${c.status}；范围 ${c.scope}；授权人 ${c.owner}`).join("\n") || "尚未配置连接。请在管理员工作台选择来源、共享范围和内容授权人。"}\n\n这是本地接入演示，不会调用真实连接器、读取业务资料或同步项目知识库。`;
   if (!context) return brainAnswer(state, question);
@@ -210,6 +216,19 @@ export function appendQuestion(
       : personal.groups.map((g) =>
           g.id === groupId ? { ...g, collapsed: false } : g,
         );
+  const guided =
+    state.catalogVersion === "v03" && role !== "系统管理员"
+      ? guidedReply(state, role, context, q, existing?.messages.at(-1))
+      : undefined;
+  const entityDraft =
+    state.catalogVersion === "v03"
+      ? proposedCreation(
+          state,
+          role,
+          q,
+          context?.objectId || existing?.messages.at(-1)?.focusId,
+        )
+      : undefined;
   return {
     threadId: id,
     data: {
@@ -226,9 +245,17 @@ export function appendQuestion(
             ...(existing?.messages || []),
             {
               id: crypto.randomUUID(),
+              createdAt: new Date().toISOString(),
+              entityDraft,
               question: q,
-              answer: contextualAnswer(state, role, context, q),
+              answer: entityDraft
+                ? `已整理新增${entityDraft.kind}草稿，请核对下方名称、目标和关联记录。确认提交后才写入工作台；登记不等于业务批准。`
+                : guided?.answer || contextualAnswer(state, role, context, q),
+              nextQuestions: entityDraft ? [] : guided?.nextQuestions,
+              focusId: guided?.focusId,
+              intent: guided?.intent,
               version: state.version,
+              dataset: state.catalogVersion,
             },
           ],
         },

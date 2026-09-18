@@ -13,6 +13,9 @@ import {
 import { Modal } from "../components/ui";
 import { FollowButton } from "./workbench";
 import { EntitySummary } from "../components/context-details";
+import { CatalogDetail } from "../components/catalog-detail";
+import { orderedDomains } from "../domain/project-domains";
+import { FilterChips } from "../components/filter-chips";
 
 interface Props {
   state: State;
@@ -58,7 +61,10 @@ export function OntologyWorkbench(p: Props) {
         : current === "需求"
           ? label(e.project)
           : e.status;
-  const categories = [...new Set(base.map(classify))];
+  const categories =
+    current === "项目"
+      ? orderedDomains(base.map(classify))
+      : [...new Set(base.map(classify))];
   const filtered = base.filter(
     (e) =>
       (category === "全部" || classify(e) === category) &&
@@ -187,7 +193,7 @@ export function OntologyWorkbench(p: Props) {
           ...(preferred[detail.kind] || []),
           ...linked.map((e) => e.kind),
         ]),
-      ]
+      ].filter((t) => linked.some((e) => e.kind === t))
     : [];
   const relation = relationTypes.includes(related as EntityType)
     ? related
@@ -247,53 +253,61 @@ export function OntologyWorkbench(p: Props) {
       {detail ? (
         <section className="ontology-detail">
           <EntitySummary entity={detail} entities={entities} />
-          <div
-            className="ontology-tabs ontology-subtabs"
-            role="tablist"
-            aria-label="关联对象"
-          >
-            {relationTypes.map((t) => (
-              <button
-                key={t}
-                role="tab"
-                aria-selected={relation === t}
-                onClick={() => setRelated(t)}
+          {p.state.catalogVersion === "v03" ? (
+            <CatalogDetail
+              key={detail.id}
+              entity={detail}
+              entities={entities}
+              onSelect={p.onSelect}
+            />
+          ) : (
+            <>
+              <div
+                className="ontology-tabs ontology-subtabs"
+                role="tablist"
+                aria-label="关联对象"
               >
-                相关{t}
-                <span>{linked.filter((e) => e.kind === t).length}</span>
-              </button>
-            ))}
-          </div>
-          {table(
-            linked.filter((e) => e.kind === relation),
-            relation === "需求",
+                {relationTypes.map((t) => (
+                  <button
+                    key={t}
+                    role="tab"
+                    aria-selected={relation === t}
+                    onClick={() => setRelated(t)}
+                  >
+                    相关{t}
+                    <span>{linked.filter((e) => e.kind === t).length}</span>
+                  </button>
+                ))}
+              </div>
+              {table(
+                linked.filter((e) => e.kind === relation),
+                relation === "需求",
+              )}
+              <p className="ontology-footnote">
+                只展示当前角色可见的关联；目标达成需业务证据确认，不以交付完成替代。
+              </p>
+            </>
           )}
-          <p className="ontology-footnote">
-            只展示当前角色可见的关联；目标达成需业务证据确认，不以交付完成替代。
-          </p>
         </section>
       ) : (
         <section role="tabpanel" aria-label={`${current}清单`}>
           <div className="ontology-filters">
-            <div className="ontology-categories">
-              {["全部", ...categories].map((c) => (
-                <button
-                  key={c}
-                  className={category === c ? "active" : ""}
-                  onClick={() => {
-                    setCategory(c);
-                    setPage(1);
-                  }}
-                >
-                  {c}{" "}
-                  <span>
-                    {c === "全部"
-                      ? base.length
-                      : base.filter((e) => classify(e) === c).length}
-                  </span>
-                </button>
-              ))}
-            </div>
+            <FilterChips
+              label={current === "项目" ? "项目类型" : "清单分类"}
+              value={category}
+              options={["全部", ...categories].map((c) => ({
+                value: c,
+                label: c,
+                count:
+                  c === "全部"
+                    ? base.length
+                    : base.filter((e) => classify(e) === c).length,
+              }))}
+              onChange={(c) => {
+                setCategory(c);
+                setPage(1);
+              }}
+            />
             <div className="ontology-selects">
               <label className="ontology-search">
                 <Search size={15} />

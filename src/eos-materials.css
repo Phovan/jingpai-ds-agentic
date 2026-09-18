@@ -96,6 +96,36 @@
   padding: 0 0 0 14px;
   margin: 24px 0;
 }
+.eos-step-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid #ead2d8;
+  background: #fcf6f8;
+  border-radius: 8px;
+}
+.eos-step-controls button {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.eos-step-controls small {
+  width: 100%;
+  font-size: 11px;
+}
+.eos-timeline li.executing {
+  border-left-color: #bc8d43;
+}
+.eos-history-result {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.eos-stage-pending p {
+  color: #8d293e;
+  font-size: 14px;
+}
 .eos-timeline li {
   position: relative;
   padding: 0 0 24px 22px;

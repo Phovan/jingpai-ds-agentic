@@ -4,6 +4,7 @@ import { visibleEntities } from "../domain/ontology";
 import { contextItems, type BrainContext } from "../domain/experience";
 import type { Role, State } from "../domain/model";
 import { Modal } from "./ui";
+import { dossiers } from "../domain/catalog";
 
 export function EntitySummary({
   entity,
@@ -18,19 +19,25 @@ export function EntitySummary({
     (e) => e.kind === "项目" && entity.links.includes(e.id),
   );
   const attention = projects.filter((e) => e.attention);
+  const sourceBacked = !!dossiers[entity.id];
   const reasons =
-    entity.kind === "战略"
-      ? attention
-          .slice(0, 3)
-          .map(
-            (e) =>
-              `${e.title}：${e.actual}，${e.gap}；${e.risk}。下一步：${e.next}。`,
-          )
-      : [
-          `${entity.risk}。${entity.attention ? `当前${entity.actual}，${entity.gap}；尚不能据此认定业务目标已经达成。` : "继续保留观察证据，避免将单次样本当作持续达标。"}`,
-          `影响：${entity.kind === "项目" || entity.kind === "需求" ? "交付承诺与业务效果需要分别确认；依赖未解除前，应持续评估后续验收与交付安排。" : "需核实关联交付、运行指标及业务目标是否受到影响，不能只以状态标签作判断。"}`,
-          `建议行动：${entity.next}；补齐处理结果与验证证据，再决定是否关闭风险。`,
-        ];
+    sourceBacked && entity.kind !== "战略"
+      ? [
+          entity.risk.split("。").slice(0, 2).join("。") + "。",
+          `下一步：${entity.next}`,
+        ]
+      : entity.kind === "战略"
+        ? attention
+            .slice(0, 3)
+            .map(
+              (e) =>
+                `${e.title}：${e.actual}，${e.gap}；${e.risk}。下一步：${e.next}。`,
+            )
+        : [
+            `${entity.risk}。${entity.attention ? `当前${entity.actual}，${entity.gap}；尚不能据此认定业务目标已经达成。` : "继续保留观察证据，避免将单次样本当作持续达标。"}`,
+            `影响：${entity.kind === "项目" || entity.kind === "需求" ? "交付承诺与业务效果需要分别确认；依赖未解除前，应持续评估后续验收与交付安排。" : "需核实关联交付、运行指标及业务目标是否受到影响，不能只以状态标签作判断。"}`,
+            `建议行动：${entity.next}；补齐处理结果与验证证据，再决定是否关闭风险。`,
+          ];
   return (
     <>
       <section
@@ -60,7 +67,11 @@ export function EntitySummary({
           </div>
           <div>
             <small>交付进展</small>
-            <strong>{entity.progress}</strong>
+            <strong>
+              {sourceBacked
+                ? entity.progress.split("。")[0] + "。"
+                : entity.progress}
+            </strong>
           </div>
           <div>
             <small>关键下一步</small>

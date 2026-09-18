@@ -42,6 +42,13 @@ describe("EOS implementation demo", () => {
       issueId: "ISS-024",
     });
     expect(s.eosRuns).toHaveLength(1);
+    expect(s.eosRuns?.[0].status).toBe("waiting");
+    s = transition(s, "研发", {
+      type: "eos",
+      action: "next",
+      issueId: "ISS-024",
+      expectedStep: 0,
+    });
     expect(() =>
       transition(s, "研发", {
         type: "eos",
@@ -66,7 +73,7 @@ describe("EOS implementation demo", () => {
       action: "start",
       issueId: "ISS-024",
     });
-    expect(s.eosRuns?.[0].status).toBe("running");
+    expect(s.eosRuns?.[0].status).toBe("waiting");
     expect(s.eosRuns).toHaveLength(1);
   });
   it("runs independent review repair loop without changing acceptance, release or business results", () => {
@@ -76,12 +83,25 @@ describe("EOS implementation demo", () => {
       action: "start",
       issueId: "ISS-024",
     });
-    for (let i = 1; i < EOS_STEPS.length; i++)
-      s = transition(s, "EOS Agents", {
+    for (let i = 1; i < EOS_STEPS.length; i++) {
+      s = transition(s, "研发", {
         type: "eos",
-        action: "tick",
+        action: "next",
         issueId: "ISS-024",
+        expectedStep: i - 1,
       });
+      s = transition(
+        s,
+        "EOS Agents",
+        {
+          type: "eos",
+          action: "tick",
+          issueId: "ISS-024",
+        },
+        s.version,
+        s.eosRuns![0].readyAt,
+      );
+    }
     expect(s.eosRuns?.[0].status).toBe("completed");
     expect(s.eosRuns?.[0].acceptance).toBe(EOS_ACCEPTANCE);
     expect(s.events.some((x) => x.title.includes("退回修复"))).toBe(true);

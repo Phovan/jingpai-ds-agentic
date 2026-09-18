@@ -2,9 +2,19 @@ import { useRef, useState } from "react";
 import type { Role } from "./model";
 import type { BrainContext, SavedBoard } from "./experience";
 export interface Message {
+  entityDraft?: import("./entity-creation").EntityDraft;
+  createdAt?: string;
+  presented?: boolean;
+  dataset?: "v03";
+  nextQuestions?: string[];
+  focusId?: string;
+  intent?: string;
   reportAction?: import("./briefing").ReportAction;
   actionDone?: boolean;
   eosIssueId?: string;
+  eosRunId?: string;
+  eosStepIndex?: number;
+  eosAdvance?: boolean;
   id: string;
   question: string;
   answer: string;
@@ -37,6 +47,7 @@ export interface Material {
   version: number;
 }
 export interface Personal {
+  ontologyDefaultsVersion?: number;
   topics?: import("./briefing").Topic[];
   reportDrafts?: Record<string, import("./briefing").ReportDraft>;
   readInbox?: string[];
@@ -50,6 +61,7 @@ export interface Personal {
   feedback: { id: string; text: string; created: string }[];
 }
 export const emptyPersonal = (): Personal => ({
+  ontologyDefaultsVersion: 2,
   schema: 1,
   groups: [],
   threads: [],
@@ -91,6 +103,19 @@ export function moveThread(s: Personal, id: string, groupId: string): Personal {
     threads: s.threads.map((t) => (t.id === id ? { ...t, groupId } : t)),
   };
 }
+export function migratePersonalDefaults(s: Personal, role: Role): Personal {
+  if (s.ontologyDefaultsVersion === 2) return s;
+  const oldDefault =
+    role === "研发" &&
+    s.ontologyTabs?.length === 2 &&
+    s.ontologyTabs.includes("系统") &&
+    s.ontologyTabs.includes("需求");
+  return {
+    ...s,
+    ontologyDefaultsVersion: 2,
+    ...(oldDefault ? { ontologyTabs: ["需求", "Issue", "系统"] } : {}),
+  };
+}
 function loadPersonal(role: Role): { data: Personal; warning: string } {
   try {
     const raw = localStorage.getItem(personalKey(role));
@@ -105,7 +130,7 @@ function loadPersonal(role: Role): { data: Personal; warning: string } {
       !Array.isArray(s.feedback)
     )
       throw new Error();
-    return { data: s, warning: "" };
+    return { data: migratePersonalDefaults(s, role), warning: "" };
   } catch {
     return {
       data: emptyPersonal(),

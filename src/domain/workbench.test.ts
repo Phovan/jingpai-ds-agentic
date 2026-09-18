@@ -13,7 +13,7 @@ describe("role workbench and personal workspace", () => {
     expect(new Set(ROLES.map(personalKey)).size).toBe(11));
   it("gives management a classified project portfolio", () => {
     const items = workItems(seed(), "管理层");
-    for (const domain of ["研发", "产品", "营销", "服务", "采购"])
+    for (const domain of ["生产研发", "产品质量", "营销服务", "采购供应链"])
       expect(items.some((i) => i.domain === domain && i.kind === "项目")).toBe(
         true,
       );

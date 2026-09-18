@@ -1,7 +1,9 @@
 import { EOS_ACCEPTANCE, EOS_STEPS } from "./eos";
+import { catalogEntities } from "./catalog";
 import { nextAction, type Role, type State } from "./model";
 import { getOperations, projectGap } from "./operations";
 import { operationItems, type WorkItem } from "./workbench";
+import { projectDomain } from "./project-domains";
 
 export const ENTITY_TYPES = [
   "Issue",
@@ -17,9 +19,14 @@ export const ENTITY_TYPES = [
   "报告",
   "经验",
   "资料",
+  "组织",
+  "里程碑",
+  "供应商",
+  "亮点",
 ] as const;
 export type EntityType = (typeof ENTITY_TYPES)[number];
-export interface Entity extends Omit<WorkItem, "kind"> {
+export interface Entity extends Omit<WorkItem, "kind" | "domain"> {
+  domain: string;
   kind: EntityType;
   risk: string;
   summary: string;
@@ -34,7 +41,7 @@ export const DEFAULT_TABS: Record<Role, EntityType[]> = {
   项目经理: ["项目"],
   业务Owner: ["需求"],
   产品经理: ["系统", "需求"],
-  研发: ["系统", "需求"],
+  研发: ["需求", "Issue", "系统"],
   系统管理员: [],
   项目成员: ["项目", "承诺"],
   系统负责人: ["系统"],
@@ -52,6 +59,7 @@ export function configuredTabs(role: Role, saved?: string[]): EntityType[] {
 /** Demo read scope, independent of display preferences. Not a production authorization service. */
 export function visibleEntities(s: State, role: Role): Entity[] {
   if (role === "系统管理员") return [];
+  if (s.catalogVersion === "v03") return catalogEntities(s, role);
   const o = getOperations(s);
   const portfolio = ["管理层", "PMO", "系统负责人"].includes(role);
   // Other demo identities are assigned to the order-collaboration project only.
@@ -343,5 +351,5 @@ export function visibleEntities(s: State, role: Role): Entity[] {
       const target = rows.find((x) => x.id === id)!;
       if (!target.links.includes(r.id)) target.links.push(r.id);
     }
-  return rows;
+  return rows.map((row) => ({ ...row, domain: projectDomain(row.domain) }));
 }

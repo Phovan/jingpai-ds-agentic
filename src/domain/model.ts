@@ -1,4 +1,5 @@
 import { applyEos } from "./eos";
+import { applyCreation } from "./entity-creation";
 import {
   applyOperation,
   getOperations,
@@ -197,8 +198,11 @@ export interface Connection {
   history: { at: string; result: string }[];
 }
 export interface State {
+  createdEntities?: import("./entity-creation").CreatedEntity[];
+  catalogVersion?: "v03";
   reportFocus?: import("./briefing").FocusAssignment[];
   eosRuns?: import("./eos").EosRun[];
+  eosHistory?: import("./eos").EosRun[];
   operations?: Operations;
   connections?: Connection[];
   schema: 1;
@@ -229,6 +233,7 @@ export interface State {
   knowledgeVerified: boolean;
 }
 export type Command =
+  | import("./entity-creation").CreateCommand
   | {
       type: "report-focus";
       id: string;
@@ -419,6 +424,9 @@ export function transition(
       detail,
     });
   switch (command.type) {
+    case "catalog-create":
+      applyCreation(s, actor, command, at);
+      break;
     case "report-focus": {
       allow("管理层");
       guard(

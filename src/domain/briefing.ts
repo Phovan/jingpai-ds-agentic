@@ -2,6 +2,8 @@ import { DEFAULT_TABS, visibleEntities } from "./ontology";
 import { nextAction, type Role, type State } from "./model";
 import type { BrainContext } from "./experience";
 import type { Personal } from "./personal";
+import { CATALOG_DATE } from "./catalog";
+import { narrativeText } from "./narrative";
 
 export const PERIODS = ["周报", "月报", "季报", "年度总结"] as const;
 export type Period = (typeof PERIODS)[number];
@@ -54,6 +56,46 @@ export function periodLabel(period: ReportView["period"], date = new Date()) {
 }
 export function topicsFor(s: State, role: Role, p: Personal): Topic[] {
   const visible = visibleEntities(s, role);
+  if (s.catalogVersion === "v03") {
+    const seeds = [
+      {
+        id: "v03-comment-loop",
+        title: "高风险评论处置闭环",
+        summary:
+          "从 73% 待复核，到漏单核实、修复门禁与消费者问题验证；不把分派当解决。",
+        objectIds: ["S02", "P02", "X02", "D01", "R01", "C01", "REL01"],
+      },
+      {
+        id: "v03-supply-evidence",
+        title: "供应商回执与预警可信度",
+        summary:
+          "跟踪 2 条缺原因回执、55% 预警率与采购 Owner 核验，补证后再评价。",
+        objectIds: ["P06", "X08", "V01", "R02", "F04"],
+      },
+      {
+        id: "v03-eos-quality",
+        title: "AI 交付与独立审核",
+        summary:
+          "D01 → I01 → M01 → REL01；实现、审核、发布和业务观察分别留证。",
+        objectIds: ["P12", "X02", "D01", "I01", "M01", "REL01"],
+      },
+      {
+        id: "v03-overseas",
+        title: "品牌出海准备与立项",
+        summary:
+          "P09 市场验证先于 P10 试单，X10 尚待建设；当前不填虚假完成率。",
+        objectIds: ["S04", "P09", "P10", "X10"],
+      },
+    ];
+    return [...seeds, ...(p.topics || [])]
+      .map((t) => ({
+        ...t,
+        title: narrativeText(t.title, visible),
+        summary: narrativeText(t.summary, visible),
+        objectIds: t.objectIds.filter((id) => visible.some((e) => e.id === id)),
+      }))
+      .filter((t) => t.objectIds.length);
+  }
   const first = visible.find((e) => e.id === "PRJ-001");
   const seeds: Topic[] = first
     ? [
@@ -83,9 +125,11 @@ export function reportingItems(
   topicId?: string,
 ) {
   const all = visibleEntities(s, role);
-  const ids = topicId
-    ? topicsFor(s, role, p).find((t) => t.id === topicId)?.objectIds || []
-    : p.follows;
+  const ids = (
+    topicId
+      ? topicsFor(s, role, p).find((t) => t.id === topicId)?.objectIds || []
+      : p.follows
+  ).filter((id) => all.some((e) => e.id === id));
   if (ids.length || topicId) return all.filter((e) => ids.includes(e.id));
   return all.filter((e) => DEFAULT_TABS[role].includes(e.kind));
 }
@@ -117,16 +161,22 @@ export function reportText(
   const focus = (s.reportFocus || []).filter(
     (f) => f.recipients.includes(role) && f.period === ctx.report?.period,
   );
-  return [
-    `${ctx.title} · 演示快照 v${s.version}`,
-    "当前快照汇总，不代表已接入该周期的历史趋势。",
-    ...rows.map(
-      (e) =>
-        `${e.title}（${e.id}）\n目标：${e.goal}\n当前：${e.actual}；差距：${e.gap}\n风险：${e.risk}\n下一步：${e.next}`,
-    ),
-    ...focus.map((f) => `上级关注：${f.content}`),
-    ...(p.reportDrafts?.[ctx.key]?.notes || []).map((n) => `补充关注：${n}`),
-  ].join("\n\n");
+  return narrativeText(
+    [
+      `${ctx.title} · 演示快照 v${s.version}`,
+      "当前快照汇总，不代表已接入该周期的历史趋势。",
+      ...(s.catalogVersion === "v03"
+        ? [periodSummary(s, role, p, ctx.report || { period: "周报" })]
+        : []),
+      ...rows.map(
+        (e) =>
+          `${e.title}（${e.id}）\n目标：${e.goal}\n当前：${e.actual}；差距：${e.gap}\n风险：${e.risk}\n下一步：${e.next}`,
+      ),
+      ...focus.map((f) => `上级关注：${f.content}`),
+      ...(p.reportDrafts?.[ctx.key]?.notes || []).map((n) => `补充关注：${n}`),
+    ].join("\n\n"),
+    visibleEntities(s, role),
+  );
 }
 export function reportReply(
   s: State,
@@ -172,7 +222,96 @@ export function reportReply(
     answer: `${reportText(s, role, p, ctx)}\n\n建议先核实目标差距与风险证据，再确定下一步。可输入“补充关注：…”或“确认本期汇报”。本轮为演示规则回复。`,
   };
 }
-export function inboxItems(s: State, role: Role) {
+export interface InboxItem {
+  id: string;
+  kind: string;
+  title: string;
+  summary: string;
+  objectId: string;
+  route?: import("./model").Route;
+  body?: string;
+}
+export function inboxItems(s: State, role: Role): InboxItem[] {
+  if (s.catalogVersion === "v03") {
+    const visible = visibleEntities(s, role);
+    const rows: (InboxItem & { roles?: Role[] })[] = [
+      {
+        id: "v03-decision-capacity",
+        kind: "待处理",
+        title: "P02 核实与 P03 上线：技术容量待协调",
+        summary:
+          "PMO 提请 · 同一技术负责人承担日志核实与发布门禁，需确认优先级。",
+        objectId: "O03",
+        roles: ["管理层", "PMO"],
+        body: "方案 A 先完成 P02 的 C01 核实并人工补查；方案 B 优先 P03 门禁但需明确漏单临时控制。O02 负责优先级，O03 负责容量。当前只有方案，P03 原基线未修改。",
+      },
+      {
+        id: "v03-sample-check",
+        kind: "待处理",
+        title: "9/19 日志核对：还需范围对照",
+        summary: "C01 · E04 需提交根因、影响条数及是否缺陷；E03 接收交付。",
+        objectId: "C01",
+        roles: ["项目经理", "研发", "产品经理", "PMO", "系统负责人"],
+        body: "F01 有 23 条事件、21 条待办，3 次回写 ID 重复；当前不能只凭相关性认定根因。E03 提供 F02 范围，E04 补日志对照。上传材料不等于交付被接收。",
+      },
+      {
+        id: "v03-scope-clarify",
+        kind: "待处理",
+        title: "跨平台评论聚合：请补业务样例",
+        summary:
+          "D02 待澄清 · 目标平台、公开评论授权、验收与期望效果尚未确认。",
+        objectId: "D02",
+        roles: ["业务Owner", "产品经理", "项目经理"],
+        body: "原范围 F02 仅含单平台。D02 是新增能力，不是 D01 的修复范围，不纳入 REL01。E05 补样例后由 E12 澄清，再交 PMO 评估资源。",
+      },
+      {
+        id: "v03-review",
+        kind: "待处理",
+        title: "候选实现 r1：独立审核待核对",
+        summary: "M01 · 重复回写、失败重试、权限隔离和并发反例均需验证。",
+        objectId: "I01",
+        roles: ["研发", "产品经理", "测试", "系统负责人"],
+        body: "I01 当前待实现，M01 为候选 r1，尚未通过独立审核。EOS 演示可呈现 r1 退回、r2 修复的回路；不能把预设脚本当已发生结果。",
+      },
+      {
+        id: "v03-shared-scope",
+        kind: "被分享",
+        title: "已批准范围与评论样本摘要",
+        summary: "E03 分享 · 单平台原范围；73% 分派率在漏单期间待复核。",
+        objectId: "F02",
+        body: "F02 定义单平台、单品牌既有范围；F01 仅展示获授权的脱敏摘要。需要先核实样本再判断 D01 缺陷；D02 跨平台能力另走需求澄清，不扩大资料权限。",
+      },
+      {
+        id: "v03-report-B01",
+        kind: "团队报告",
+        title: "9 月项目周报草稿：两处事实待确认",
+        summary: "B01 · P02 指标口径与 C01 核实结论尚待 E03 / E04 签收。",
+        objectId: "B01",
+        body: "本期草稿：P02 当前 73%（待复核），R01 待核实，C01 待完成，REL01 拟定。先补 F01 / F02 核对，PMO 汇总后负责人确认；不写‘运行正常’。",
+      },
+      {
+        id: "v03-procurement",
+        kind: "被分享",
+        title: "采购协同回执：2 条变更原因缺失",
+        summary: "F04 · 待补原因与新日期，尚不能给供应商定性为延期。",
+        objectId: "P06",
+        roles: ["管理层", "PMO"],
+        body: "大集采与供应商协同（P06）预警率 55%，目标 80%。R02 待补证，V01 只补自己工作包。采购 Owner 校验后再判断是数据、流程还是交付问题。",
+      },
+    ];
+    return rows
+      .filter(
+        (i) =>
+          (!i.roles || i.roles.includes(role)) &&
+          visible.some((e) => e.id === i.objectId),
+      )
+      .map((i) => ({
+        ...i,
+        title: narrativeText(i.title, visible),
+        summary: narrativeText(i.summary, visible),
+        body: i.body ? narrativeText(i.body, visible) : undefined,
+      }));
+  }
   const n = nextAction(s);
   if (!visibleEntities(s, role).some((e) => e.id === "PRJ-001")) return [];
   return [
@@ -203,4 +342,23 @@ export function inboxItems(s: State, role: Role) {
       objectId: "PRJ-001",
     },
   ];
+}
+
+export function periodSummary(
+  s: State,
+  role: Role,
+  p: Personal,
+  view: ReportView,
+): string {
+  const rows = reportingItems(s, role, p, view.topicId);
+  const projects = rows.filter((e) => e.kind === "项目");
+  const headings: Record<ReportView["period"], string> = {
+    周报: "本周先核实阻塞与承诺",
+    月报: "本月核对目标差距与费用预测",
+    季报: "本季检查战略贡献与项目组合",
+    年度总结: "年度视角区分已交付、已验证和未启动",
+    自定义Topic: "围绕主题持续追踪证据与结果",
+  };
+  const priority = rows.filter((e) => e.attention).slice(0, 3);
+  return `${headings[view.period]}。\n${projects.length ? `当前范围：${projects.length} 个项目；${projects.filter((e) => e.status === "已结束").length} 个已结束、${projects.filter((e) => e.status === "进行中").length} 个进行中、${projects.filter((e) => e.status === "准备立项").length} 个准备立项。已结束不等于收益已经验证。` : `当前汇总 ${rows.length} 项职责或关注事项，${rows.filter((e) => e.attention).length} 项需推进或补证。`}\n${priority.map((e) => `${e.title}（${e.id}）：${e.actual}；${e.gap}。`).join("\n")}\n数据截至 ${CATALOG_DATE}，仅该日虚拟快照；月/季/年度视角不虚构历史趋势与增长。`;
 }

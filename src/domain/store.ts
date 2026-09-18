@@ -44,7 +44,10 @@ export function parseState(raw: string | null): State {
 let warning = "";
 function load() {
   try {
-    return parseState(localStorage.getItem(KEY));
+    return {
+      ...parseState(localStorage.getItem(KEY)),
+      catalogVersion: "v03" as const,
+    };
   } catch {
     warning =
       "本地存档无法读取，当前为临时演示。可导出当前数据或重置演示；旧存档在重置前不覆盖。";
@@ -60,7 +63,7 @@ if (typeof window !== "undefined")
   window.addEventListener("storage", (e) => {
     if (e.key === KEY) {
       try {
-        current = parseState(e.newValue);
+        current = { ...parseState(e.newValue), catalogVersion: "v03" };
         notify();
       } catch {
         warning = "其他标签页存档异常，请刷新或重置演示。";
@@ -80,10 +83,14 @@ export function useDemo() {
   );
 }
 export const storageWarning = () => warning;
+export const readDemoState = () => current;
 export async function execute(actor: Actor, command: Command, version: number) {
   const update = () => {
     if (locked) throw new Error(warning);
-    const disk = parseState(localStorage.getItem(KEY));
+    const disk = {
+      ...parseState(localStorage.getItem(KEY)),
+      catalogVersion: "v03" as const,
+    };
     if (disk.version !== current.version) {
       current = disk;
       notify();
@@ -103,7 +110,7 @@ export async function execute(actor: Actor, command: Command, version: number) {
 }
 export async function resetDemo() {
   const reset = () => {
-    const next = seed();
+    const next: State = { ...seed(), catalogVersion: "v03" };
     localStorage.setItem(KEY, JSON.stringify(next));
     current = next;
     warning = "";
@@ -115,7 +122,12 @@ export async function resetDemo() {
 }
 export function startAgentClock() {
   const interval = window.setInterval(() => {
-    const eos = current.eosRuns?.find((r) => r.status === "running");
+    const eos = current.eosRuns?.find(
+      (r) =>
+        r.mode === "manual" &&
+        r.status === "running" &&
+        (!r.readyAt || Date.parse(r.readyAt) <= Date.now()),
+    );
     if (eos) {
       void execute(
         "EOS Agents",
@@ -124,6 +136,7 @@ export function startAgentClock() {
       ).catch(() => {});
       return;
     }
+    if (current.catalogVersion === "v03") return;
     const review = current.demands.find(
       (d) =>
         d.id !== "REQ-024" &&
