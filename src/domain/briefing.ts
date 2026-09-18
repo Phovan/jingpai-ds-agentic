@@ -235,6 +235,15 @@ export function inboxItems(s: State, role: Role): InboxItem[] {
   if (s.catalogVersion === "v03") {
     const visible = visibleEntities(s, role);
     const rows: (InboxItem & { roles?: Role[] })[] = [
+      ...(s.eosTestTasks || []).map((task): InboxItem & { roles: Role[] } => ({
+        id: task.id,
+        kind: "待处理",
+        title: `待测试：${task.issueId}`,
+        summary: `研发已提交 · 测试工程师接收 · ${task.implId} · ${task.status}`,
+        objectId: task.issueId,
+        roles: [task.recipient],
+        body: `研发于 ${new Date(task.createdAt).toLocaleString("zh-CN")} 转交实施包。关联 Issue：${task.issueId}；候选实现：${task.implId}；执行轮次：${task.runId}。\n\n冻结验收：${task.acceptance}\n\n测试工作：核对实现差异、两轮 Review 与失败记录，独立验证重复并发、失败重试和权限隔离，记录实际环境、版本及证据。\n\n当前为待测试，阅读待办不代表测试完成；不自动发布、关闭风险或确认业务验收。`,
+      })),
       {
         id: "v03-decision-capacity",
         kind: "待处理",
@@ -302,6 +311,10 @@ export function inboxItems(s: State, role: Role): InboxItem[] {
     return rows
       .filter(
         (i) =>
+          !(
+            i.id === "v03-review" &&
+            s.eosTestTasks?.some((task) => task.issueId === i.objectId)
+          ) &&
           (!i.roles || i.roles.includes(role)) &&
           visible.some((e) => e.id === i.objectId),
       )

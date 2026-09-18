@@ -42,6 +42,7 @@ import {
 import { usePersonal } from "./domain/personal";
 import { TOOLS } from "./domain/workbench";
 import { Modal } from "./components/ui";
+import { EntityText } from "./components/entity-text";
 import { Login } from "./components/login";
 import { useMobile } from "./components/use-mobile";
 import { ConversationSidebar } from "./components/conversation-sidebar";
@@ -110,6 +111,12 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
   const [executionIssue, setExecutionIssue] = useState<string | null>(null);
   const eosRun = state.eosRuns?.find((r) => r.issueId === executionIssue);
   const eosClick = useRef(false);
+  const testTransferLock = useRef(false);
+  const [transferringTest, setTransferringTest] = useState(false);
+  const [testPreview, setTestPreview] = useState<string | null>(null);
+  const testReceipt = state.eosTestTasks?.find(
+    (task) => task.id === testPreview,
+  );
   const uploading = useRef(false);
   const [boards, setBoards] = useState(false);
   const [boardDrawer, setBoardDrawer] = useState(false);
@@ -578,6 +585,31 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
       eosClick.current = false;
     }
   }
+  async function transferToTest() {
+    if (!eosRun || testTransferLock.current) return;
+    testTransferLock.current = true;
+    setTransferringTest(true);
+    try {
+      const current = readDemoState();
+      await execute(
+        role,
+        {
+          type: "eos",
+          action: "transfer-test",
+          issueId: eosRun.issueId,
+          expectedRunId: eosRun.id,
+        },
+        current.version,
+      );
+      setNotice("已转测试，测试工程师的即时信息中已新增待办。");
+      setError("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "转测试未完成，请重试。");
+    } finally {
+      testTransferLock.current = false;
+      setTransferringTest(false);
+    }
+  }
   function exportExecution() {
     if (!eosRun || !threadId) return;
     personal.update((p) => ({
@@ -994,6 +1026,17 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
                 run={eosRun}
                 entities={entities}
                 canAdvance={role === "研发"}
+                testTask={state.eosTestTasks?.find(
+                  (task) => task.runId === eosRun.id,
+                )}
+                onTransferTest={() => void transferToTest()}
+                transferring={transferringTest}
+                onPreviewTest={() =>
+                  setTestPreview(
+                    state.eosTestTasks?.find((task) => task.runId === eosRun.id)
+                      ?.id || null,
+                  )
+                }
                 onNext={() => void eosInteract("next", eosRun.issueId)}
                 onView={(index) =>
                   void eosInteract("view", eosRun.issueId, index)
@@ -1013,6 +1056,34 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
             )}
         </div>
       </div>
+      {testReceipt && role === "研发" && (
+        <Modal title="测试待办 · 转交预览" onClose={() => setTestPreview(null)}>
+          <p>
+            <strong>测试工程师 · 待测试</strong>
+          </p>
+          <p>本轮已转交独立测试；这是刚刚发出的待办预览，不代表测试完成。</p>
+          <p>
+            <EntityText
+              text={`关联 Issue：${testReceipt.issueId}；候选实现：${testReceipt.implId}`}
+              entities={entities}
+              onSelect={(id) => {
+                setTestPreview(null);
+                selectEntity(id);
+              }}
+            />
+          </p>
+          <h3>冻结验收</h3>
+          <p>{narrativeText(testReceipt.acceptance, entities)}</p>
+          <h3>测试工作</h3>
+          <p>
+            核对实现差异、两轮 Review
+            与失败记录，独立验证重复并发、失败重试和权限隔离，记录实际环境、版本与证据。
+          </p>
+          <small>
+            执行轮次：{testReceipt.runId} · 本地演示待办，不发送外部通知。
+          </small>
+        </Modal>
+      )}
       {materials && (
         <MaterialPanel
           personal={personal}

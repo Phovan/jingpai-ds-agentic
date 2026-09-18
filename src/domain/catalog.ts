@@ -842,7 +842,9 @@ export function catalogEntities(s: State, role: Role): Entity[] {
     if (issue) {
       issue.status =
         run.status === "completed"
-          ? "模拟验证完成 · 待人工确认"
+          ? s.eosTestTasks?.some((task) => task.runId === run.id)
+            ? "已转测试 · 待独立测试"
+            : "模拟验证完成 · 待人工确认"
           : run.status === "stopped"
             ? "实施已暂停"
             : run.status === "waiting"

@@ -15,6 +15,10 @@ export function EosExecutionPanel({
   onView,
   onRestart,
   canAdvance,
+  testTask,
+  onTransferTest,
+  transferring,
+  onPreviewTest,
 }: {
   run: EosRun;
   entities: Entity[];
@@ -26,6 +30,10 @@ export function EosExecutionPanel({
   onView: (index: number) => void;
   onRestart: () => void;
   canAdvance: boolean;
+  testTask?: import("../domain/eos").EosTestTask;
+  onTransferTest: () => void;
+  transferring: boolean;
+  onPreviewTest: () => void;
 }) {
   const steps = eosSteps(run.issueId);
   const text = (value: string) => narrativeText(value, entities);
@@ -103,13 +111,40 @@ export function EosExecutionPanel({
               {reached && (
                 <div className="eos-artifact">{text(step.output)}</div>
               )}
-              {reached && (index < run.step || run.status === "completed") && (
-                <button
-                  className="text-button eos-history-result"
-                  onClick={() => onView(index)}
-                >
-                  查看本阶段结果
-                </button>
+              {reached &&
+              index === steps.length - 1 &&
+              run.status === "completed" ? (
+                <div className="eos-step-controls">
+                  <button
+                    className="primary"
+                    onClick={onTransferTest}
+                    disabled={!canAdvance || !!testTask || transferring}
+                  >
+                    {testTask
+                      ? "已转测试"
+                      : transferring
+                        ? "正在转交…"
+                        : "转测试"}
+                  </button>
+                  <small>
+                    {testTask
+                      ? "测试工程师 · 待测试"
+                      : "转交后，测试工程师将收到独立测试待办"}
+                  </small>
+                  {testTask && (
+                    <button onClick={onPreviewTest}>查看测试待办</button>
+                  )}
+                </div>
+              ) : (
+                reached &&
+                (index < run.step || run.status === "completed") && (
+                  <button
+                    className="text-button eos-history-result"
+                    onClick={() => onView(index)}
+                  >
+                    查看本阶段结果
+                  </button>
+                )
               )}
             </li>
           );

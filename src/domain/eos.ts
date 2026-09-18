@@ -107,11 +107,24 @@ export interface EosRun {
   updated: string;
   acceptance: string;
 }
+export interface EosTestTask {
+  id: string;
+  runId: string;
+  issueId: string;
+  implId: string;
+  recipient: "测试";
+  recipientId?: string;
+  status: "待测试";
+  acceptance: string;
+  createdAt: string;
+  issuer: "研发";
+}
 export type EosCommand = {
   type: "eos";
-  action: "start" | "next" | "tick" | "stop" | "restart";
+  action: "start" | "next" | "tick" | "stop" | "restart" | "transfer-test";
   issueId: string;
   expectedStep?: number;
+  expectedRunId?: string;
 };
 export function eosIssue(s: State, id: string) {
   if (s.catalogVersion === "v03" && id === "I01")
@@ -125,6 +138,37 @@ export function applyEos(s: State, actor: Actor, c: EosCommand, at: string) {
     throw new Error("Issue 不存在或不在当前演示授权范围。");
   const runs = (s.eosRuns ||= []);
   const run = runs.find((r) => r.issueId === c.issueId);
+  if (c.action === "transfer-test") {
+    if (actor !== "研发") throw new Error("仅研发可转测试。");
+    if (!run || run.status !== "completed" || run.step !== EOS_STEPS.length - 1)
+      throw new Error("请先完成本轮实施包，再转测试。");
+    if (c.expectedRunId !== run.id)
+      throw new Error("实施轮次已变化，请核对后重试。");
+    if (s.eosTestTasks?.some((task) => task.runId === run.id))
+      throw new Error("本轮已转测试，请勿重复派发。");
+    (s.eosTestTasks ||= []).push({
+      id: `TEST-${run.id}`,
+      runId: run.id,
+      issueId: run.issueId,
+      implId: run.issueId === "I01" ? "M02" : "IMPL-024",
+      recipient: "测试",
+      recipientId: run.issueId === "I01" ? "E13" : undefined,
+      status: "待测试",
+      acceptance: run.acceptance,
+      createdAt: at,
+      issuer: "研发",
+    });
+    s.events.push({
+      id: `EVT-${s.events.length + 1}`,
+      at,
+      actor,
+      object: run.issueId,
+      title: "已转测试 · 独立测试待办已生成",
+      detail:
+        "接收人：测试工程师；关联当前实施包与冻结验收。仅本地演示，不代表测试通过、生产发布或业务验收。",
+    });
+    return;
+  }
   if (c.action === "start" || c.action === "restart") {
     if (actor !== "研发")
       throw new Error("仅研发角色可发起本次 EOS 实施演示。");

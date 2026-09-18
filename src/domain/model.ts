@@ -203,6 +203,7 @@ export interface State {
   reportFocus?: import("./briefing").FocusAssignment[];
   eosRuns?: import("./eos").EosRun[];
   eosHistory?: import("./eos").EosRun[];
+  eosTestTasks?: import("./eos").EosTestTask[];
   operations?: Operations;
   connections?: Connection[];
   schema: 1;
