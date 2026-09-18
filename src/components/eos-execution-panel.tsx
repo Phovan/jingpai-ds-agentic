@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { useState } from "react";
 import { eosSteps, type EosRun } from "../domain/eos";
 import type { Entity } from "../domain/ontology";
 import { narrativeText } from "../domain/narrative";
@@ -15,6 +16,8 @@ export function EosExecutionPanel({
   onView,
   onRestart,
   canAdvance,
+  canReview,
+  onReview,
   testTask,
   onTransferTest,
   transferring,
@@ -30,11 +33,27 @@ export function EosExecutionPanel({
   onView: (index: number) => void;
   onRestart: () => void;
   canAdvance: boolean;
+  canReview: boolean;
+  onReview: (
+    action: "approve" | "reject",
+    reason: string,
+  ) => void | Promise<void>;
   testTask?: import("../domain/eos").EosTestTask;
   onTransferTest: () => void;
   transferring: boolean;
   onPreviewTest: () => void;
 }) {
+  const [reason, setReason] = useState(""),
+    [reviewing, setReviewing] = useState(false);
+  const review = async (action: "approve" | "reject") => {
+    if (reviewing) return;
+    setReviewing(true);
+    try {
+      await onReview(action, reason);
+    } finally {
+      setReviewing(false);
+    }
+  };
   const steps = eosSteps(run.issueId);
   const text = (value: string) => narrativeText(value, entities);
   const manual = run.mode === "manual";
@@ -63,6 +82,53 @@ export function EosExecutionPanel({
         <summary>冻结验收 · 执行中不变更</summary>
         <p>{text(run.acceptance)}</p>
       </details>
+      {!!run.reviewHistory?.length && (
+        <details className="human-review">
+          <summary>人工决定与退回记录 · {run.reviewHistory.length}</summary>
+          {run.reviewHistory.map((h, i) => (
+            <p key={i}>
+              {h.actor} · {h.decision === "approved" ? "通过" : "退回"}：
+              {h.reason}
+            </p>
+          ))}
+          <p>当前候选 r{run.revision || 2}；历史轮次和冻结验收保留。</p>
+        </details>
+      )}
+      {run.humanReview === "pending" && (
+        <section className="human-review" aria-label="人工审核关口">
+          <h3>待人工审核 · 候选 r{run.revision || 2}</h3>
+          <p>
+            独立复审通过不等于人工批准。确认验收、资源影响与证据完整性后，才能进入模拟验证。
+          </p>
+          {canReview ? (
+            <>
+              <textarea
+                aria-label="EOS审核意见"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="填写通过依据；退回时写清缺口和重提条件"
+              />
+              <div className="delivery-buttons">
+                <button
+                  className="primary"
+                  disabled={!reason.trim() || reviewing}
+                  onClick={() => review("approve")}
+                >
+                  审核通过
+                </button>
+                <button
+                  disabled={!reason.trim() || reviewing}
+                  onClick={() => review("reject")}
+                >
+                  退回研发
+                </button>
+              </div>
+            </>
+          ) : (
+            <p>请切换管理层或项目经理处理；研发不可自审。</p>
+          )}
+        </section>
+      )}
       <ol className="eos-timeline">
         {steps.map((step, index) => {
           const reached =
@@ -82,7 +148,11 @@ export function EosExecutionPanel({
                 <div className="eos-step-controls">
                   <button
                     className="primary"
-                    disabled={!canAdvance || run.status === "running"}
+                    disabled={
+                      !canAdvance ||
+                      run.status === "running" ||
+                      run.humanReview === "pending"
+                    }
                     onClick={onNext}
                   >
                     {run.status === "running" ? "执行中…" : "下一步"}
@@ -100,16 +170,37 @@ export function EosExecutionPanel({
                 {step.agent} ·{" "}
                 {reached ? "已完成" : active ? "执行中" : "待开始"}
               </small>
-              <h3>{step.title}</h3>
+              <h3>
+                {index === 3 && (run.revision || 2) > 2
+                  ? `按人工意见修复 · r${run.revision}`
+                  : step.title}
+              </h3>
               <p>
                 {reached
-                  ? text(step.detail)
+                  ? index >= 3 && (run.revision || 2) > 2
+                    ? `候选 r${run.revision}：${index === 3 ? "按人工退回要求补充实现与反例；新候选等待独立复审。" : index === 4 ? "按原冻结验收重新独立复放，补充证据已生成，仍须人工再次决定。" : "核对人工批准的新候选与本轮证据；未连接真实 CI、生产环境或发布。"}`
+                    : text(step.detail)
                   : active
                     ? "正在核对本阶段输入并执行模拟任务；等待完成回执。"
                     : "等待前序证据与手动推进；本阶段尚未执行。"}
               </p>
               {reached && (
-                <div className="eos-artifact">{text(step.output)}</div>
+                <div className="eos-artifact">
+                  {index >= 3 && (run.revision || 2) > 2
+                    ? `r${run.revision} · ${step.agent} 本轮证据（模拟）；旧轮次保留`
+                    : text(step.output)}
+                </div>
+              )}
+              {reached && index >= 3 && (run.revision || 2) > 2 && (
+                <p>
+                  本轮候选 r{run.revision} · 人工补充要求：
+                  {
+                    run.reviewHistory
+                      ?.filter((h) => h.decision === "rejected")
+                      .at(-1)?.reason
+                  }
+                  。旧轮次仍在档案中。
+                </p>
               )}
               {reached &&
               index === steps.length - 1 &&

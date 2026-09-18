@@ -1,4 +1,5 @@
 import { applyEos } from "./eos";
+import { applyDelivery } from "./delivery";
 import { applyCreation } from "./entity-creation";
 import {
   applyOperation,
@@ -198,6 +199,8 @@ export interface Connection {
   history: { at: string; result: string }[];
 }
 export interface State {
+  deliveryActions?: import("./delivery").DeliveryAction[];
+  deliveryPlans?: import("./delivery").DeliveryPlan[];
   createdEntities?: import("./entity-creation").CreatedEntity[];
   catalogVersion?: "v03";
   reportFocus?: import("./briefing").FocusAssignment[];
@@ -234,6 +237,7 @@ export interface State {
   knowledgeVerified: boolean;
 }
 export type Command =
+  | import("./delivery").DeliveryCommand
   | import("./entity-creation").CreateCommand
   | {
       type: "report-focus";
@@ -469,6 +473,9 @@ export function transition(
     }
     case "eos":
       applyEos(s, actor, command, at);
+      break;
+    case "delivery":
+      applyDelivery(s, actor, command, at);
       break;
     case "ops":
       applyOperation(s, actor, command, at);

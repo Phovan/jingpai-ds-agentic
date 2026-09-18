@@ -26,16 +26,17 @@ const state = (): State => ({ ...seed(), catalogVersion: "v03" });
 describe("V0.3 catalogue", () => {
   it("imports every primary entity and supporting identity, without duplicates", () => {
     const expected = {
-      战略: 5,
+      战略: 4,
       项目: 12,
       系统: 13,
       需求: 25,
       组织: 4,
       员工: 16,
-      风险: 2,
+      风险: 6,
       供应商: 1,
       版本: 3,
-      Issue: 1,
+      Issue: 7,
+      会议: 5,
       Impl: 1,
       亮点: 1,
       承诺: 1,
@@ -49,7 +50,16 @@ describe("V0.3 catalogue", () => {
       ).toHaveLength(count);
     expect(new Set(catalog.map((e) => e.id)).size).toBe(catalog.length);
     expect(catalog.filter((e) => e.kind === "里程碑")).toHaveLength(30);
-    expect(catalog).toHaveLength(122);
+    expect(catalog).toHaveLength(136);
+  });
+  it("removes the retired vision and all live strategy references to it", () => {
+    expect(catalog.some((e) => e.id === "S01")).toBe(false);
+    for (const e of catalog) expect(e.links).not.toContain("S01");
+    for (const e of catalog.filter((e) => e.kind === "战略")) {
+      expect(JSON.stringify(dossiers[e.id])).not.toMatch(
+        /S01|成为世界一流的健康产品企业/,
+      );
+    }
   });
   it("preserves every project/system dossier section and separate baseline/forecast", () => {
     for (const e of catalog.filter((e) => ["项目", "系统"].includes(e.kind))) {
@@ -124,7 +134,7 @@ describe("V0.3 catalogue", () => {
       catalogEntities(state(), "项目经理")
         .filter((e) => e.kind === "项目")
         .map((e) => e.id),
-    ).toEqual(["P02"]);
+    ).toEqual(["P02", "P03", "P05", "P09"]);
   });
   it("keeps unknowns, drafts, unverified rates and unbuilt systems distinct", () => {
     expect(catalog.find((e) => e.id === "P02")!.actual).toContain("待复核");
@@ -232,6 +242,14 @@ describe("V0.3 catalogue", () => {
     );
     const acceptance = s.eosRuns![0].acceptance;
     for (let n = 0; n < 6; n++) {
+      if (n === 4)
+        s = transition(s, "项目经理", {
+          type: "eos",
+          action: "approve",
+          issueId: "I01",
+          expectedRunId: s.eosRuns![0].id,
+          reason: "独立复验证据齐全",
+        });
       s = transition(s, "研发", {
         type: "eos",
         action: "next",
@@ -252,7 +270,7 @@ describe("V0.3 catalogue", () => {
     expect(rows.find((e) => e.id === "M02")!.status).toContain("未发布");
     expect(rows.find((e) => e.id === "I01")!.actual).toContain("模拟验证完成");
     expect(rows.find((e) => e.id === "M01")!.links).toContain("M02");
-    expect(rows.find((e) => e.id === "D01")!.status).toBe("待排期");
+    expect(rows.find((e) => e.id === "D01")!.status).toBe("已排期 · 执行队列");
     expect(rows.find((e) => e.id === "R01")!.status).toBe("待核实");
   });
   it("period summaries do not turn current snapshots into historical trends", () => {

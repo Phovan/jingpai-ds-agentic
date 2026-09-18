@@ -6,6 +6,7 @@ import { operationItems, type WorkItem } from "./workbench";
 import { projectDomain } from "./project-domains";
 
 export const ENTITY_TYPES = [
+  "会议",
   "Issue",
   "Impl",
   "战略",
@@ -34,10 +35,11 @@ export interface Entity extends Omit<WorkItem, "kind" | "domain"> {
   links: string[];
   project?: string;
   system?: string;
+  delivery?: (typeof import("./delivery").deliveryCases)[string];
 }
 export const DEFAULT_TABS: Record<Role, EntityType[]> = {
   管理层: ["战略", "项目", "系统"],
-  PMO: ["项目"],
+  PMO: ["项目", "会议"],
   项目经理: ["项目"],
   业务Owner: ["需求"],
   产品经理: ["系统", "需求"],

@@ -1,4 +1,5 @@
 import type { Actor, State } from "./model";
+import { plansFor, canReviewDelivery, bugs } from "./delivery";
 
 export const EOS_STEPS = [
   {
@@ -54,6 +55,52 @@ export const EOS_ACCEPTANCE =
 export const CATALOG_EOS_ACCEPTANCE =
   "同一评论事件重复回写不漏单；23 条样本回放无遗漏；失败重试后待办一致；受限评论权限隔离；补充并发与乱序反例。原验收不可降低。";
 export function eosSteps(issueId: string) {
+  if (issueId === "I03") {
+    const details = [
+      "冻结并发配额审批的验收：两个账号同时提交同一申请，只能生效一次。预设反例中两个请求均读取待审批状态，随后各写入一条生效记录；保留时间线与审计日志，尚非真实生产归因。",
+      "初版候选在提交前检查审批状态，并增加重复点击与失败重试单测。串行用例通过，但先查询再写入存在竞态，仍须独立并发复验；未连接真实仓库。",
+      "独立 Review 用同步屏障同时释放两个审批请求，复现两次生效，判定 P1 阻断。仅增加前置查询不能保证原子性；保留初版、请求日志和读回证据，不降低验收。",
+      "新候选把待审批到已生效的条件更新、配额变更与审计记录放在同一事务；只有更新成功的请求可产生业务效果，另一个返回已有结果。补失败回滚、重试、越权和历史意见反例。",
+      "独立复审重新绑定修复候选，模拟核对双账号并发、超时重试、事务回滚、越权拒绝及审计读回：每个申请只有一次生效。提交项目经理人工审核，可确认或退回，不授权发布。",
+      "人工批准后在模拟预览路径复验并发审批和历史申请，核对申请、配额及审计的一致性。测试证据绑定本轮候选；真实 CI 和生产环境未执行，不等于测试人员已签收。",
+      "汇总并发配额审批的归因、两轮实现、P1 阻断、独立复审、人工意见与模拟验证。可转独立测试；市场健康度与渠道配额优化仍处测试阶段，原 P1 未自动关闭，配额候选版未发布。",
+    ];
+    const outputs = [
+      "并发时间线与冻结验收",
+      "初版候选 · 待独立审查",
+      "P1 阻断 · 重复生效反例",
+      "事务原子修复与回退草案",
+      "独立复审记录 · 待人工审核",
+      "预览验证记录（模拟）",
+      "实施交付包 · 待转测试",
+    ];
+    return EOS_STEPS.map((step, i) => ({
+      ...step,
+      detail: details[i],
+      output: `并发配额审批 · ${outputs[i]}`,
+    }));
+  }
+  if (["I-BATCH", "I-SAMPLE"].includes(issueId)) {
+    const subject =
+      issueId === "I-BATCH" ? "批次映射边界校验" : "海外洞察样本授权校验";
+    const samples =
+      issueId === "I-SAMPLE"
+        ? "20 条国家/语言基线样本及 18 条边界反例"
+        : "18 条边界样本";
+    return EOS_STEPS.map((step, i) => ({
+      ...step,
+      detail: [
+        `${subject}：按已确认需求与资源计划建立反例，冻结验收；只运行本地模拟。`,
+        `${subject}：提交初版校验实现与 12 条模拟单测；尚未独立审核。`,
+        `独立审查阻断：校验函数未接入实际导入入口，异常样本可绕过；保留反例及 r1 证据。`,
+        `接入导入入口并补缺字段、越权与重复提交反例；形成新候选，不覆盖 r1。`,
+        `按冻结验收独立复放 ${samples}，入口与权限反例通过；交项目经理人工审核，未批准发布。`,
+        `人工批准后核对候选与预览路径；${samples}模拟通过，不代表真实环境测试。`,
+        `汇总 ${subject} 的实现、Review、人工决定与验证证据；待转独立测试，业务验收未完成。`,
+      ][i],
+      output: `${subject} · ${["归因与冻结验收", "初版候选", "P1 阻断证据", "修复候选", "独立复审记录", "模拟行为验证", "实施交付包"][i]}`,
+    }));
+  }
   if (issueId !== "I01") return EOS_STEPS;
   return EOS_STEPS.map((step, index) => ({
     ...step,
@@ -97,6 +144,15 @@ export function eosSteps(issueId: string) {
   }));
 }
 export interface EosRun {
+  humanReview?: "pending" | "approved" | "rejected";
+  revision?: number;
+  parentRunId?: string;
+  reviewHistory?: {
+    actor: Actor;
+    at: string;
+    decision: "approved" | "rejected";
+    reason: string;
+  }[];
   id: string;
   issueId: string;
   step: number;
@@ -121,23 +177,93 @@ export interface EosTestTask {
 }
 export type EosCommand = {
   type: "eos";
-  action: "start" | "next" | "tick" | "stop" | "restart" | "transfer-test";
+  action:
+    | "start"
+    | "next"
+    | "tick"
+    | "stop"
+    | "restart"
+    | "transfer-test"
+    | "approve"
+    | "reject";
+  reason?: string;
   issueId: string;
   expectedStep?: number;
   expectedRunId?: string;
 };
 export function eosIssue(s: State, id: string) {
-  if (s.catalogVersion === "v03" && id === "I01")
-    return { id: "D01", projectId: "P02" };
+  if (s.catalogVersion === "v03") {
+    const plan = plansFor(s).find(
+      (p) => p.issue === id && p.status === "已入队",
+    );
+    if (plan) return { id: plan.demand, projectId: plan.project };
+    return undefined;
+  }
   return id === "ISS-024"
     ? s.demands.find((d) => d.id === "REQ-024" && d.projectId === "PRJ-001")
     : undefined;
 }
 export function applyEos(s: State, actor: Actor, c: EosCommand, at: string) {
-  if (!eosIssue(s, c.issueId))
+  if (!eosIssue(s, c.issueId)) {
+    if (
+      s.catalogVersion === "v03" &&
+      (bugs.some((b) => b.issue === c.issueId) ||
+        plansFor(s).some((p) => p.issue === c.issueId))
+    )
+      throw new Error(
+        "该 Issue 尚无可执行的已批准实施计划，或已关闭。请先确认需求与资源计划；逐步演示可选择“并发配额审批重复生效”或“回写重复导致待办队列漏单”。",
+      );
     throw new Error("Issue 不存在或不在当前演示授权范围。");
+  }
   const runs = (s.eosRuns ||= []);
   const run = runs.find((r) => r.issueId === c.issueId);
+  if (c.action === "approve" || c.action === "reject") {
+    if (!canReviewDelivery(actor))
+      throw new Error("请由管理层、项目经理或 PMO 人工审核，研发不可自审。");
+    if (
+      !run ||
+      run.step !== 4 ||
+      run.status !== "waiting" ||
+      run.humanReview !== "pending" ||
+      c.expectedRunId !== run.id
+    )
+      throw new Error("仅可审核当前待人工确认的候选，请刷新记录。");
+    if (!c.reason?.trim()) throw new Error("请填写审核依据或退回原因。");
+    run.humanReview = c.action === "approve" ? "approved" : "rejected";
+    (run.reviewHistory ||= []).push({
+      actor,
+      at,
+      decision: run.humanReview,
+      reason: c.reason.trim(),
+    });
+    run.updated = at;
+    if (c.action === "reject") {
+      (s.eosHistory ||= []).push(structuredClone(run));
+      runs.splice(runs.indexOf(run), 1, {
+        ...structuredClone(run),
+        id: `EOS-${s.version + 1}`,
+        parentRunId: run.id,
+        revision: (run.revision || 2) + 1,
+        step: 2,
+        status: "waiting",
+        humanReview: undefined,
+        started: at,
+        updated: at,
+      });
+    }
+    s.events.push({
+      id: `EVT-${s.events.length + 1}`,
+      at,
+      actor,
+      object: c.issueId,
+      title:
+        c.action === "approve"
+          ? "人工审核通过 · 允许模拟验证"
+          : "人工审核退回 · 新修复轮次待研发",
+      detail: c.reason.trim(),
+    });
+    return;
+  }
   if (c.action === "transfer-test") {
     if (actor !== "研发") throw new Error("仅研发可转测试。");
     if (!run || run.status !== "completed" || run.step !== EOS_STEPS.length - 1)
@@ -150,9 +276,14 @@ export function applyEos(s: State, actor: Actor, c: EosCommand, at: string) {
       id: `TEST-${run.id}`,
       runId: run.id,
       issueId: run.issueId,
-      implId: run.issueId === "I01" ? "M02" : "IMPL-024",
+      implId:
+        run.issueId === "I01" && (run.revision || 2) === 2
+          ? "M02"
+          : run.issueId === "ISS-024"
+            ? "IMPL-024"
+            : `IMPL-${run.id}`,
       recipient: "测试",
-      recipientId: run.issueId === "I01" ? "E13" : undefined,
+      recipientId: s.catalogVersion === "v03" ? "E13" : undefined,
       status: "待测试",
       acceptance: run.acceptance,
       createdAt: at,
@@ -194,8 +325,11 @@ export function applyEos(s: State, actor: Actor, c: EosCommand, at: string) {
         mode: "manual",
         started: at,
         updated: at,
+        revision: 2,
         acceptance:
-          c.issueId === "I01" ? CATALOG_EOS_ACCEPTANCE : EOS_ACCEPTANCE,
+          s.catalogVersion === "v03"
+            ? plansFor(s).find((p) => p.issue === c.issueId)!.acceptance
+            : EOS_ACCEPTANCE,
       });
     }
   } else if (c.action === "next") {
@@ -209,6 +343,12 @@ export function applyEos(s: State, actor: Actor, c: EosCommand, at: string) {
     if (c.expectedStep !== run.step)
       throw new Error("执行阶段已变化，请核对后重试。");
     if (run.step >= EOS_STEPS.length - 1) throw new Error("所有阶段已经完成。");
+    if (
+      s.catalogVersion === "v03" &&
+      run.step === 4 &&
+      run.humanReview !== "approved"
+    )
+      throw new Error("独立复审后须经人工审核通过，才能进入验证。");
     run.status = "running";
     run.readyAt = new Date(Date.parse(at) + 1800).toISOString();
     run.updated = at;
@@ -227,6 +367,8 @@ export function applyEos(s: State, actor: Actor, c: EosCommand, at: string) {
       if (run.readyAt && Date.parse(at) < Date.parse(run.readyAt))
         throw new Error("本阶段仍在执行中。");
       run.step = Math.min(run.step + 1, EOS_STEPS.length - 1);
+      if (s.catalogVersion === "v03" && run.step === 4)
+        run.humanReview = "pending";
       run.status = run.step === EOS_STEPS.length - 1 ? "completed" : "waiting";
       delete run.readyAt;
     }

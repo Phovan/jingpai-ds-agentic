@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { narrativeText } from "./narrative";
 import { catalog, catalogEntities } from "./catalog";
+import { deliveryEntities } from "./delivery";
 import { seed, transition } from "./model";
 import { eosStageAnswer } from "./eos-dialogue";
 import { emptyPersonal, migratePersonalDefaults } from "./personal";
@@ -30,7 +31,12 @@ describe("business names in prose", () => {
       "管理层",
     );
     for (const row of rows) {
-      expect(catalog.some((e) => e.id === row.id)).toBe(true);
+      expect(
+        [
+          ...catalog,
+          ...deliveryEntities({ ...seed(), catalogVersion: "v03" }, catalog),
+        ].some((e) => e.id === row.id),
+      ).toBe(true);
       for (const key of [
         "summary",
         "risk",

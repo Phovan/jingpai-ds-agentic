@@ -3,6 +3,13 @@ import type { Entity, EntityType } from "./ontology";
 import type { Role, State } from "./model";
 import { projectDomain, domainLabels } from "./project-domains";
 import { narrativeText } from "./narrative";
+import {
+  meetings,
+  deliveryCases,
+  bugs,
+  deliveryEntities,
+  plansFor,
+} from "./delivery";
 
 /** V0.3 is a separate dataset, never an alias for the previous PRJ-/SYS- seed. */
 export const CATALOG_DATE = "2026-09-18";
@@ -127,7 +134,10 @@ for (const c of tableRows("P")) {
   );
 }
 const strategyRows = tableRows("S");
-for (const c of strategyRows.slice(0, 5)) {
+// The retired vision remains in the source snapshot, not in the live demo.
+for (const c of strategyRows
+  .slice(0, 5)
+  .filter((r) => !r[0].startsWith("S01"))) {
   const id = c[0].slice(0, 3);
   const decomposition = strategyRows.find(
     (r) => r[0].startsWith(id) && r !== c && r[0] !== c[0],
@@ -139,29 +149,22 @@ for (const c of strategyRows.slice(0, 5)) {
     {
       domain: c[0].slice(4),
       goal: c[2],
-      actual:
-        id === "S01"
-          ? "按四个方向复盘"
-          : id === "S04"
-            ? "准备阶段 · 待观察"
-            : c[2],
+      actual: id === "S04" ? "准备阶段 · 待观察" : c[2],
       gap: c[4],
       status: c[4].split("；")[0],
       summary:
-        id === "S01"
-          ? "上位愿景通过 S02—S05 承接；不按项目数或任务完成率计算愿景达成。"
-          : "承接上位愿景，沿目标、指标、举措和业务验证追踪贡献。同一项目支持多个方向，不重复累加收益。",
+        "沿目标、指标、举措和业务验证追踪贡献。同一项目支持多个方向，不重复累加收益。",
       risk: c[4],
       next: c[4].split("；").slice(1).join("；") || c[4],
       progress: "战略贡献须业务验证，不以系统上线代替",
       links: references(c[3] + " " + (decomposition || []).join(" ")).filter(
-        (x) => x !== id,
+        (x) => x !== id && x !== "S01",
       ),
-      attention: id !== "S01",
+      attention: true,
     },
     {
       战略拆解: decomposition
-        ? `上位意图：${id === "S01" ? "长期愿景" : "S01"}\n\n细分目标：${decomposition[1]}\n\n领先 / 结果信号：${decomposition[2]}\n\n关键举措：${decomposition[3]}\n\n收益责任与验证：${decomposition[4]}`
+        ? `细分目标：${decomposition[1]}\n\n领先 / 结果信号：${decomposition[2]}\n\n关键举措：${decomposition[3]}\n\n收益责任与验证：${decomposition[4]}`
         : c[2],
       指标与口径: c[2],
       收益验证: decomposition?.[4] || c[4],
@@ -169,11 +172,6 @@ for (const c of strategyRows.slice(0, 5)) {
   );
 }
 const strategyPresentation: Record<string, [string, string, string]> = {
-  S01: [
-    "四个战略方向持续形成经验证的长期能力",
-    "四方向持续跟踪",
-    "定性愿景，不计算伪完成率",
-  ],
   S02: [
     "4 小时分派率 ≥90%；批次追溯 ≥95%",
     "分派 73% 待复核；追溯 78%",
@@ -771,14 +769,109 @@ for (const row of rows) {
 for (const dossier of Object.values(dossiers))
   for (const key of Object.keys(dossier.sections))
     dossier.sections[key] = domainLabels(dossier.sections[key]);
+for (const meeting of meetings) {
+  add(
+    meeting.id,
+    "会议",
+    meeting.title,
+    {
+      project: meeting.project,
+      status: "已召开 · 行动待跟踪",
+      actual: meeting.time,
+      summary: meeting.progress,
+      goal: "确认项目偏差、决议与责任行动",
+      progress: meeting.progress,
+      risk: "会议纪要不等于行动已批准或完成",
+      next: meeting.actions[0],
+      links: [meeting.project, "E03", "E14", "E13", "O02"],
+    },
+    {
+      会议概况: `时间：${meeting.time}\n\n参会：${meeting.participants}\n\n项目进展：${meeting.progress}`,
+      讨论观点: meeting.viewpoints.map((v) => `- ${v}`).join("\n"),
+      决议与边界: meeting.decisions,
+      下一步与责任: meeting.actions.map((v) => `- ${v}`).join("\n"),
+    },
+  );
+}
+for (const [id, d] of Object.entries(deliveryCases)) {
+  const p = rows.find((e) => e.id === id)!;
+  p.delivery = d;
+  p.status = d.stage;
+  p.risk = `${d.riskType}：${d.risk}`;
+  p.next = d.next;
+  p.progress = `${d.done}/${d.total} · ${d.basis}；${d.quality}`;
+  dossiers[id].sections["交付阶段与完成度"] =
+    `2026-09-18 合成演示补充：${d.stage}；${d.basis}已完成 ${d.done} / 总计 ${d.total}，剩余 ${d.total - d.done} 项。由项目经理按交付物签收记录统计，不使用业务 KPI 充当完成度。\n\n参与方：${d.participants}。\n\n质量结论：${d.quality}。\n\n风险分类：${d.riskType}。${d.risk}\n\n下一步：${d.next}。`;
+  add(
+    `R-DEMO-${id}`,
+    "风险",
+    d.riskType + "：" + p.title,
+    {
+      project: id,
+      status: "持续跟踪",
+      actual: d.quality,
+      summary: d.risk,
+      risk: d.risk,
+      next: d.next,
+      links: [id, ...p.links.filter((x) => /^X\d+$/.test(x))],
+    },
+    { 风险分类与依据: `${d.riskType}。${d.risk}`, 应对与责任: d.next },
+  );
+}
+for (const m of meetings) rows.find((e) => e.id === m.id)!.goal = m.progress;
+for (const id of ["X04", "REL02", "D05"]) {
+  const e = rows.find((row) => row.id === id)!;
+  e.status = id === "X04" ? "集成测试 · 准备上线" : "测试中 · 发布阻断";
+  e.risk = "合成测试快照：仍有 1 个 P1 和 1 个 P2 待复测；不满足发布条件";
+  e.next =
+    "测试工程师独立复测并发审批与说明留存，项目经理核对证据；未获生产授权不得发布";
+  e.attention = true;
+  dossiers[id].sections["当前测试门禁"] =
+    "2026-09-18 合成补充：配额候选版 rc3，28/30 用例通过，仍有 1 个 P1、1 个 P2 未关闭；缺陷数量由 6 降至 1 后重开 1 项，发布继续阻断。此前准备上线 / 待验收是源快照，不代表已通过当前质量门禁。";
+  if (dossiers[id].sections["责任与门禁"])
+    dossiers[id].sections["责任与门禁"] +=
+      "\n\n" + dossiers[id].sections["当前测试门禁"];
+  if (dossiers[id].sections["工程质量与运维门禁"])
+    dossiers[id].sections["工程质量与运维门禁"] +=
+      "\n\n" + dossiers[id].sections["当前测试门禁"];
+}
+for (const bug of bugs)
+  add(
+    bug.issue,
+    "Issue",
+    bug.title,
+    {
+      project: "P03",
+      system: "X04",
+      status: `${bug.severity} · ${bug.status}`,
+      actual: bug.status,
+      summary: `${bug.version}；${bug.retest}`,
+      goal: bug.retest,
+      risk: `${bug.severity} · ${bug.status}`,
+      next: `${bug.owner} · ${bug.retest}`,
+      attention: bug.status !== "已关闭",
+      links: ["P03", "D05", "X04", "REL02", "E13", "E14"],
+    },
+    {
+      业务定义: bug.title,
+      责任与门禁: `${bug.severity}；${bug.owner}；${bug.version}；${bug.retest}。关闭缺陷不自动授权发布。`,
+    },
+  );
+for (const row of rows)
+  for (const id of row.links) {
+    const parent = rows.find((e) => e.id === id);
+    if (parent && !parent.links.includes(row.id)) parent.links.push(row.id);
+  }
 export const catalog = rows;
 export function catalogEntities(s: State, role: Role): Entity[] {
   if (role === "系统管理员") return [];
   const broad = ["管理层", "PMO"].includes(role);
   const assignments =
-    role === "项目经理" || role === "业务Owner" || role === "项目成员"
+    role === "业务Owner" || role === "项目成员"
       ? ["P02"]
-      : ["P02", "P03", "P04", "P05", "P11", "P12"];
+      : role === "项目经理"
+        ? ["P02", "P03", "P05", "P09"]
+        : ["P02", "P03", "P04", "P05", "P09", "P11", "P12"];
   const projects = new Set(assignments);
   const systems = new Set(
     rows
@@ -793,7 +886,6 @@ export function catalogEntities(s: State, role: Role): Entity[] {
         ? systems.has(e.id)
         : e.links.some((id) => projects.has(id) || systems.has(id)) ||
           [
-            "S01",
             "O01",
             "O02",
             "O03",
@@ -809,6 +901,19 @@ export function catalogEntities(s: State, role: Role): Entity[] {
   const visible = rows
     .filter(allowed)
     .map((e) => ({ ...e, links: [...e.links] }));
+  visible.push(...deliveryEntities(s, rows).filter(allowed));
+  for (const row of visible)
+    for (const id of row.links) {
+      const parent = visible.find((e) => e.id === id);
+      if (parent && !parent.links.includes(row.id)) parent.links.push(row.id);
+    }
+  for (const plan of plansFor(s)) {
+    const demand = visible.find((e) => e.id === plan.demand);
+    if (demand && plan.status === "已入队" && plan.demand !== "D05") {
+      demand.status = "已排期 · 执行队列";
+      demand.next = `研发工程师 · ${plan.due} · ${plan.resource}`;
+    }
+  }
   for (const custom of s.createdEntities || []) {
     if (
       broad ||
@@ -835,6 +940,25 @@ export function catalogEntities(s: State, role: Role): Entity[] {
     if (row.project && !ids.has(row.project)) row.project = undefined;
     if (row.system && !ids.has(row.system)) row.system = undefined;
   }
+  const quotaRun = s.eosRuns?.find((r) => r.issueId === "I03");
+  const quotaIssue = visible.find((e) => e.id === "I03");
+  if (quotaRun && quotaIssue) {
+    quotaIssue.status =
+      quotaRun.humanReview === "pending"
+        ? "待人工审核"
+        : quotaRun.status === "completed"
+          ? s.eosTestTasks?.some((t) => t.runId === quotaRun.id)
+            ? "已转测试 · 待独立复测"
+            : "实施包就绪 · 待转测试"
+          : "执行中 · 按阶段推进";
+    quotaIssue.actual = `${quotaRun.step + 1}/7 阶段（模拟）`;
+    quotaIssue.next =
+      quotaRun.humanReview === "pending"
+        ? "项目经理核对并发、重试与权限证据，确认或退回"
+        : quotaRun.status === "completed"
+          ? "独立测试复测并发审批；缺陷关闭与发布仍须人工确认"
+          : "在执行详情查看结果或手动推进下一步";
+  }
   const run = s.eosRuns?.find((r) => r.issueId === "I01");
   if (run) {
     const issue = visible.find((e) => e.id === "I01"),
@@ -859,25 +983,51 @@ export function catalogEntities(s: State, role: Role): Entity[] {
       impl.actual = impl.status;
       impl.risk =
         run.step >= 2
-          ? "模拟并发回放发现重复状态覆盖；保留 r1 与原验收，不用 r2 覆盖失败版本"
+          ? "独立审查发现后台任务未接入幂等 helper、回执缺少服务端预期值与精确读回；保留 r1 失败证据"
           : impl.risk;
     }
-    if (run.step >= 3 && issue) {
+    const rejectedR2 = s.eosHistory?.find(
+      (r) =>
+        r.issueId === "I01" &&
+        (r.revision || 2) === 2 &&
+        r.humanReview === "rejected",
+    );
+    if ((run.step >= 3 || rejectedR2) && issue) {
       const revision: Entity = {
         ...rows.find((e) => e.id === "M01")!,
         id: "M02",
         title: "评论待办幂等修复 · r2",
-        status: run.step >= 4 ? "模拟 Review 通过 · 未发布" : "待独立审核",
-        actual: run.step >= 4 ? "r2 模拟审核通过" : "r2 已提交候选",
+        status: rejectedR2
+          ? "r2 人工退回 · 未发布"
+          : run.step >= 4
+            ? "模拟 Review 通过 · 未发布"
+            : "待独立审核",
+        actual: rejectedR2
+          ? "r2 退回证据保留"
+          : run.step >= 4
+            ? "r2 模拟审核通过"
+            : "r2 已提交候选",
         gap: "未授权生产发布，业务结果尚未验证",
         summary:
-          "r1 失败后新建候选实现 r2；补充原子幂等与并发回放，冻结验收保持不变。",
+          "r1 失败后创建 r2；补后台任务接线、服务端预期回执、精确读回和 SQL 参数反例；冻结验收不变。",
         links: ["I01", "D01", "X02", "REL01", "M01"],
       };
       visible.push(revision);
       for (const target of visible)
         if (revision.links.includes(target.id) && !target.links.includes("M02"))
           target.links.push("M02");
+    }
+    if (issue && run.humanReview === "pending") {
+      issue.status = "独立复审完成 · 待人工审核";
+      issue.actual = issue.status;
+      issue.next = "管理层或项目经理审核候选；可填写原因退回研发";
+    }
+    if (issue && (run.revision || 2) > 2 && run.step < 4) {
+      issue.status = "人工退回 · 待修复复审";
+      issue.actual = issue.status;
+      issue.next =
+        run.reviewHistory?.filter((h) => h.decision === "rejected").at(-1)
+          ?.reason || "按人工退回意见修复";
     }
   }
   return visible.map((e) => {
@@ -903,6 +1053,15 @@ export interface DetailTab {
   kinds?: EntityType[];
 }
 export function entityDossier(e: Entity): Dossier {
+  if (e.kind === "Impl")
+    return {
+      sections: {
+        业务定义: e.summary,
+        责任与门禁: [e.status, e.goal, e.risk, e.gap].join("。"),
+      },
+      source: "本地实施与审查记录",
+      level: "模拟候选版本 / 失败证据保留",
+    };
   return (
     dossiers[e.id] || {
       sections: {
@@ -968,11 +1127,9 @@ export function detailTabs(e: Entity): DetailTab[] {
       { key: "map", title: "战略拆解", sections: ["战略拆解"] },
       { key: "metrics", title: "指标与口径", sections: ["指标与口径"] },
       relation("项目", "战略举措 / 项目"),
-      { key: "benefits", title: "收益验证", sections: ["收益验证"] },
       relation("战略", "上位与支撑战略"),
       relation("风险"),
       relation("组织"),
-      relation("员工", "责任人与协作"),
     ];
   if (e.kind === "项目")
     return [
@@ -991,11 +1148,23 @@ export function detailTabs(e: Entity): DetailTab[] {
       relation("战略"),
       relation("承诺"),
       relation("报告"),
+      relation("会议"),
       {
         key: "archive",
         title: "完整档案",
         sections: Object.keys(dossiers[e.id]?.sections || {}),
       },
+    ];
+  if (e.kind === "会议")
+    return [
+      {
+        key: "meeting",
+        title: "会议纪要",
+        sections: ["会议概况", "讨论观点", "决议与边界", "下一步与责任"],
+      },
+      relation("承诺", "后续行动"),
+      relation("项目"),
+      relation("员工", "相关成员"),
     ];
   if (e.kind === "系统")
     return [

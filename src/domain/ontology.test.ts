@@ -8,7 +8,7 @@ import { emptyPersonal, toggleFollow } from "./personal";
 describe("ontology workbench", () => {
   it.each([
     ["管理层", ["战略", "项目", "系统"]],
-    ["PMO", ["项目"]],
+    ["PMO", ["项目", "会议"]],
     ["项目经理", ["项目"]],
     ["业务Owner", ["需求"]],
     ["产品经理", ["系统", "需求"]],

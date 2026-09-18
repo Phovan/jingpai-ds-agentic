@@ -9,6 +9,9 @@ import type { Entity } from "./ontology";
 import type { BrainContext } from "./experience";
 import type { Message } from "./personal";
 import type { State, Role } from "./model";
+import { actionsFor, plansFor, meetings, deliveryCases } from "./delivery";
+import { demandExamples } from "./demand-examples";
+import { eosIssue } from "./eos";
 
 export interface GuidedReply {
   answer: string;
@@ -38,14 +41,15 @@ export function exampleQuestions(
       "来源撤权后如何处理历史引用？",
       "同步成功是否意味着所有人都能看原文？",
     ];
+  const entities = catalogEntities(s, role);
+  const e = entities.find((x) => x.id === (previous?.focusId || ctx?.objectId));
   if (ctx?.report)
     return [
       "这份汇报哪些结果仍需复核？",
       "补充关注：区分已交付与经业务验证的成果",
       "确认本期汇报",
+      ...demandExamples(role, entities, e),
     ];
-  const entities = catalogEntities(s, role);
-  const e = entities.find((x) => x.id === (previous?.focusId || ctx?.objectId));
   if (!e) {
     const items = entities.filter((x) =>
       ctx?.entityKind === "我的关注"
@@ -60,6 +64,7 @@ export function exampleQuestions(
           x.id === "S02" || x.id === "P02" || x.id === "X02" || x.id === "D01",
       ) || items[0];
     return [
+      ...demandExamples(role, entities, chosen),
       "当前清单哪些事项需要优先处理，依据是什么？",
       ...(chosen
         ? [
@@ -67,7 +72,7 @@ export function exampleQuestions(
             `${name(chosen)}需要谁确认哪些证据？`,
           ]
         : ["我的关注中有哪些证据尚未核实？"]),
-    ];
+    ].slice(0, 4);
   }
   const specific = scriptMap[e.id]?.question;
   const byKind: Record<string, string[]> = {
@@ -76,6 +81,9 @@ export function exampleQuestions(
       `${e.id}的过程指标能否代表业务结果？`,
     ],
     项目: [
+      ...(deliveryCases[e.id]
+        ? [`${e.id}当前阶段、质量风险和待审核行动是什么？`]
+        : []),
       `${e.id}的里程碑、成本和工时偏差如何？`,
       `${e.id}哪些需求会改变原范围？`,
     ],
@@ -89,7 +97,7 @@ export function exampleQuestions(
     ],
     Issue: [
       `${e.id}的复现证据与验收边界是什么？`,
-      ...(role === "研发"
+      ...(role === "研发" && eosIssue(s, e.id)
         ? ["开始EOS实施"]
         : [`${e.id}有哪些实现与独立审核记录？`]),
     ],
@@ -105,9 +113,14 @@ export function exampleQuestions(
       `${e.id}有哪些跨部门依赖和资源冲突？`,
       `${e.id}由谁决定优先级，哪些权限不能越过？`,
     ],
+    会议: [
+      `${e.title}有哪些不同观点，最后达成什么决定？`,
+      `${e.title}的下一步由谁负责，需要谁审核？`,
+    ],
   };
   return [
     ...new Set([
+      ...demandExamples(role, entities, e),
       ...(specific ? [specific] : []),
       ...(byKind[e.kind] || [
         `${e.id}当前事实与待核实项是什么？`,
@@ -180,6 +193,44 @@ export function guidedReply(
     };
   }
   let intent = intentOf(q);
+  const meeting = meetings.find((m) => m.id === e.id);
+  const action = actionsFor(s).find((a) => a.id === e.id);
+  const plan = plansFor(s).find((p) => p.demand === e.id || p.issue === e.id);
+  const delivery = deliveryCases[e.id];
+  if (
+    meeting ||
+    action ||
+    (plan && /计划|队列|人工|确认|阶段/.test(q)) ||
+    (delivery && /阶段|质量|会议|待审核|如何分派/.test(q))
+  ) {
+    const meetingActions = actionsFor(s).filter(
+      (a) => a.project === (meeting?.project || e.id),
+    );
+    const text = meeting
+      ? `会议进展：${meeting.time}，${meeting.progress}\n\n讨论观点：${meeting.viewpoints.join("\n")}\n\n决议：${meeting.decisions}\n\n下一步：${meeting.actions.join("；")}。关联可处理行动：${meetingActions.map((a) => `${a.title}（${a.status}）`).join("、")}；会议建议本身不构成分派。`
+      : action
+        ? `当前状态：${action.status}；责任：${action.owner}；截止：${action.due}。\n\n原始建议：${action.original}\n\n当前方案：${action.proposal}\n\n交付要求：${action.deliverable}\n\n${action.evidence ? "提交证据：" + action.evidence : "尚未提交执行证据。"}\n\n下一步：${action.status === "待审核" ? "进入行动详情，由管理层、项目经理或 PMO 修订后确认分派；也可写明理由退回。" : action.status === "待验收" ? "请审核人核对证据后验收；不足则退回补证。" : action.status === "已完成" ? "行动已验收，不等于项目目标已达成或版本获准发布。" : "责任人在行动详情领取或补齐证据；所有人工变更保留记录。"}`
+        : plan
+          ? `当前：${plan.title} · ${plan.status}。\n\n冻结验收：${plan.acceptance}\n\n计划：${plan.resource}；${plan.due}。需求确认人：${plan.confirmedBy || "尚未确认"}；计划批准人：${plan.plannedBy || "尚未批准"}。\n\n下一步：${plan.status === "待确认" ? "由需求负责人或管理层确认范围；未确认前不能进入实施。" : plan.status === "待计划" ? "项目经理确认资源与截止日期，再生成相关 Issue 并加入执行队列。" : "研发进入相关 Issue 发起 EOS；独立复审后交人工审核，退回会保留旧候选并生成修复轮次。"}`
+          : `交付阶段：${delivery.stage}；${delivery.basis} ${delivery.done}/${delivery.total}，约 ${Math.round((delivery.done / delivery.total) * 100)}%。这不是业务 KPI 达成率。\n\n参与方：${delivery.participants}。\n\n风险判断：${delivery.riskType}；${delivery.risk}\n\n质量证据：${delivery.quality}${e.id === "P03" ? "；09-16 剩余 6 项，09-17 关闭 5 项，09-18 重开 1 项，当前剩余 2 项。P1 未关闭，继续阻断发布。" : "。"}\n\n下一步：${delivery.next}。可审核建议：${meetingActions.map((a) => `${a.title} · ${a.status}`).join("；")}。请在“问题与行动”中修订、确认或退回，不凭对话自动分派。`;
+    const relatedMeeting =
+      meeting ||
+      meetings.find(
+        (m) => m.project === (action?.project || plan?.project || e.id),
+      );
+    const follow = action
+      ? [`${action.title}还缺哪些验收证据？`]
+      : meetingActions.slice(0, 1).map((a) => `${a.title}如何审核并分派？`);
+    if (relatedMeeting && !meeting)
+      follow.push(`${relatedMeeting.title}有哪些观点与决定？`);
+    if (plan) follow.push(`${plan.title}进入执行队列需要谁确认？`);
+    return {
+      answer: `围绕 ${e.title}\n\n${text}\n\n依据：2026-09-18 交付演示补充与当前本地回执；不是客户真实事实。`,
+      nextQuestions: follow.filter((v) => v !== q),
+      focusId: e.id,
+      intent: "delivery",
+    };
+  }
   // Short follow-ups retain the focal record from the preceding response, not an unrelated global example.
   if (/^(然后呢|继续|接下来呢|下一步呢)[？?。！!]*$/.test(q.trim()))
     intent =
@@ -263,7 +314,7 @@ export function guidedReply(
     ];
   } else if (isMain && intent === "review") {
     const run = s.eosRuns?.find((r) => r.issueId === "I01");
-    body = `回写重复导致待办队列漏单（I01）的验收保持 D01 原边界：同事件重复回写不漏单、失败重试后待办一致、受限评论不可被越权读取。\n\nF01 的 23 条样本用于基线回放，还需并发回写、重试恢复、乱序与双账号权限反例。研发工程师（E14）提交实现，测试工程师（E13）独立重建反例，不能由研发单次自测代替。\n\n${run && run.step >= 2 ? "本次模拟 r1 已被 Review 退回：并发重放出现重复状态覆盖。保留 M01 r1 与失败证据；后续创建 M02 r2，验收标准不变。" : "当前 M01 是待独立审核的 r1；源文件里的 r1 失败是拟演示脚本，不当成当前已发生事实。开始 EOS 实施后可观察 Review 退回与 r2 修复的模拟回路。"}\n\n通过之后仍须 REL01 发布门禁与 E05 业务观察，不自动关闭 R01。`;
+    body = `回写重复导致待办队列漏单（I01）的验收保持 D01 原边界：同事件重复回写不漏单、失败重试后待办一致、受限评论不可被越权读取。\n\nF01 的 23 条样本用于基线回放，还需并发回写、重试恢复、乱序与双账号权限反例。研发工程师（E14）提交实现，测试工程师（E13）独立重建反例，不能由研发单次自测代替。\n\n${run && run.step >= 2 ? "本次模拟 r1 已被 Review 退回：后台任务未接入幂等 helper，回执缺少服务端预期值与精确读回。保留 M01 r1 与失败证据；后续 r2 补接线、回执和 SQL 参数反例，验收标准不变。" : "当前 M01 是待独立审核的 r1；源文件里的 r1 失败是拟演示脚本，不当成当前已发生事实。开始 EOS 实施后可观察 Review 退回与 r2 修复的模拟回路。"}\n\n人工状态：${run?.humanReview === "pending" ? "独立复审完成，等待管理层或项目经理审核，不可开始验证。" : run?.humanReview === "approved" ? "人工已批准模拟验证，不授权生产发布。" : (run?.revision || 2) > 2 ? `已按人工退回生成 r${run!.revision} 修复轮次，补证后重新复审。` : "独立复审后仍须人工决定。"}\n\n通过之后仍须 REL01 发布门禁与 E05 业务观察，不自动关闭 R01。`;
     next = [
       ...(role === "研发" && e.id === "I01"
         ? ["开始EOS实施"]

@@ -1,0 +1,133 @@
+.delivery-action {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line, #e0e5ec);
+}
+.delivery-action header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.delivery-action h3 {
+  margin: 0;
+}
+.delivery-action p {
+  line-height: 1.65;
+}
+.delivery-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 16px 0;
+}
+.delivery-form label,
+.delivery-note {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #5d697a;
+  font-size: 13px;
+}
+.delivery-form .wide {
+  grid-column: 1/-1;
+}
+.delivery-form input,
+.delivery-form select,
+.delivery-form textarea,
+.delivery-note textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dce2eb;
+  border-radius: 8px;
+  background: white;
+  font: inherit;
+  color: #242c37;
+}
+.delivery-form textarea,
+.delivery-note textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+.delivery-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 14px 0;
+}
+.delivery-evidence,
+.delivery-gate {
+  background: #f7f0f2;
+  padding: 14px;
+  border-left: 3px solid #a92341;
+  border-radius: 6px;
+}
+.delivery-action details {
+  margin: 16px 0 0;
+}
+.delivery-action small {
+  display: block;
+  color: #788496;
+  margin-top: 4px;
+}
+.delivery-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding-left: 20px;
+  color: #647184;
+}
+.delivery-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+}
+.delivery-check input {
+  width: auto;
+}
+.delivery-overview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e8ebf0;
+}
+.delivery-overview strong {
+  display: block;
+  margin: 7px 0;
+  font-size: 15px;
+}
+.delivery-overview small {
+  color: #738095;
+}
+.delivery-overview p {
+  margin: 0;
+  font-size: 12px;
+  color: #6c7788;
+}
+.delivery-quality table {
+  min-width: 680px;
+}
+.human-review {
+  margin: 20px 0;
+  padding: 16px;
+  background: #faf3f4;
+  border: 1px solid #ead6dc;
+  border-radius: 10px;
+}
+.human-review textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 80px;
+  padding: 10px;
+  margin: 12px 0;
+  border: 1px solid #dacbd0;
+  border-radius: 6px;
+}
+@media (max-width: 850px) {
+  .delivery-overview {
+    grid-template-columns: 1fr 1fr;
+  }
+}

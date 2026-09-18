@@ -4,6 +4,7 @@ import type { BrainContext } from "./experience";
 import type { Personal } from "./personal";
 import { CATALOG_DATE } from "./catalog";
 import { narrativeText } from "./narrative";
+import { actionsFor, plansFor } from "./delivery";
 
 export const PERIODS = ["周报", "月报", "季报", "年度总结"] as const;
 export type Period = (typeof PERIODS)[number];
@@ -235,6 +236,44 @@ export function inboxItems(s: State, role: Role): InboxItem[] {
   if (s.catalogVersion === "v03") {
     const visible = visibleEntities(s, role);
     const rows: (InboxItem & { roles?: Role[] })[] = [
+      ...actionsFor(s)
+        .filter((a) => a.status !== "已完成")
+        .map((a) => ({
+          id: `delivery-${a.id}-${a.status}-${a.history.length}`,
+          kind: "待处理",
+          title: `${a.status}：${a.title}`,
+          summary: `${a.owner} · ${a.due} · ${a.deliverable}`,
+          objectId: a.id,
+          roles: (["待审核", "待验收"].includes(a.status)
+            ? ["管理层", "项目经理", "PMO"]
+            : [a.owner]) as Role[],
+          body: `${a.proposal}\n\n交付物：${a.deliverable}\n\n进入下方相关行动详情，审核、领取或提交证据；阅读消息不改变行动状态。`,
+        })),
+      ...plansFor(s)
+        .filter((p) => p.status !== "已入队")
+        .map((p) => ({
+          id: `plan-${p.demand}-${p.status}`,
+          kind: "待处理",
+          title: `${p.status}：${p.title}`,
+          summary:
+            p.status === "待确认"
+              ? "确认范围与验收后，才可安排实施"
+              : "需求已确认，请批准资源与截止日期",
+          objectId: p.demand,
+          roles: (p.status === "待确认"
+            ? ["管理层", "产品经理"]
+            : ["项目经理", "PMO"]) as Role[],
+        })),
+      ...(s.eosRuns || [])
+        .filter((r) => r.humanReview === "pending")
+        .map((r) => ({
+          id: `review-${r.id}`,
+          kind: "待处理",
+          title: `人工审核：${r.issueId}`,
+          summary: "独立复审完成；请选择通过或填写理由退回，研发不能自审。",
+          objectId: r.issueId,
+          roles: ["管理层", "项目经理", "PMO"] as Role[],
+        })),
       ...(s.eosTestTasks || []).map((task): InboxItem & { roles: Role[] } => ({
         id: task.id,
         kind: "待处理",

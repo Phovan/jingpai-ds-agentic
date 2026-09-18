@@ -13,9 +13,17 @@ export function eosStageAnswer(run: EosRun, index: number, viewOnly = false) {
   if (index < 0 || index >= eosSteps(run.issueId).length)
     throw new Error("执行阶段不存在。");
   const step = eosSteps(run.issueId)[index];
-  const answer =
+  let answer =
     run.issueId === "I01"
       ? results[index]
       : `结论：${step.agent} · ${step.title}（本地模拟）。\n\n事实：${step.detail}\n\n结果：${step.output}\n\n下一步：核对本轮产物后，再手动推进后续阶段；不代表已发布。`;
+  if (index === 4)
+    answer = answer.replace(
+      /下一步：[\s\S]*$/,
+      "下一步：交管理层或项目经理人工审核；可通过或填写理由退回。获批后研发才可启动验证，不授权生产发布。",
+    );
+  if ((run.revision || 2) > 2 && index >= 3) {
+    answer = `结论：本轮修复候选 r${run.revision}，接续人工退回要求。\n\n审核意见：${run.reviewHistory?.filter((h) => h.decision === "rejected").at(-1)?.reason}\n\n事实：保留上一轮实现和失败证据，本轮按原冻结验收补齐上述缺口；${step.agent} 的证据绑定新候选，不能复用旧版通过结论。\n\n验证：${index === 3 ? "已生成补充反例与修复说明，待独立重审" : index === 4 ? "独立重验通过（模拟），等待人工重新审核" : "按人工批准的新候选核对模拟行为路径，未连接真实 CI 或发布"}。\n\n下一步：${index === 4 ? "人工重新审核，可再次退回，不自动批准。" : "核对本阶段产物，再继续下一关口；不降低冻结验收。"}`;
+  }
   return `围绕 ${step.agent} · ${step.title}\n\n${answer}${viewOnly ? "\n\n查看说明：本次只读取已完成阶段的记录，没有推进或重跑任何 Agent。" : ""}`;
 }

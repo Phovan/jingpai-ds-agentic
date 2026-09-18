@@ -419,7 +419,7 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
     }
     const issueId = context?.objectId;
     const launch =
-      (!!issueId?.startsWith("ISS-") || issueId === "I01") &&
+      entities.some((e) => e.id === issueId && e.kind === "Issue") &&
       /(?:开始|继续)\s*EOS\s*实施/i.test(question);
     try {
       if (launch) {
@@ -934,6 +934,8 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
                           selectedId={context.objectId || ""}
                           selectedKind={context.entityKind || entityKind}
                           onSelect={selectEntity}
+                          onCommand={act}
+                          onExecution={showExecution}
                           onContext={setEntityKind}
                           navigate={navigate}
                           onDemand={(id) => {
@@ -956,6 +958,8 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
                   selectedId={entityId}
                   selectedKind={entityKind}
                   onSelect={selectEntity}
+                  onCommand={act}
+                  onExecution={showExecution}
                   onContext={setEntityKind}
                   onDemand={(id) => {
                     setSelectedDemand(id);
@@ -1018,14 +1022,25 @@ function WorkspaceShell({ role, logout }: { role: Role; logout: () => void }) {
                 onReturn={returnContext}
               />
             )}
-          {route === "chat" &&
+          {(route === "chat" || route === "home") &&
             eosRun &&
-            context?.objectId === eosRun.issueId &&
+            (context?.objectId === eosRun.issueId ||
+              entityId === eosRun.issueId) &&
             !materials && (
               <EosExecutionPanel
                 run={eosRun}
                 entities={entities}
                 canAdvance={role === "研发"}
+                canReview={["管理层", "项目经理", "PMO"].includes(role)}
+                onReview={(action, reason) =>
+                  act({
+                    type: "eos",
+                    action,
+                    reason,
+                    issueId: eosRun.issueId,
+                    expectedRunId: eosRun.id,
+                  })
+                }
                 testTask={state.eosTestTasks?.find(
                   (task) => task.runId === eosRun.id,
                 )}

@@ -9,6 +9,14 @@ const complete = () => {
     issueId: "I01",
   });
   for (let i = 0; i < 6; i++) {
+    if (i === 4)
+      s = transition(s, "项目经理", {
+        type: "eos",
+        action: "approve",
+        issueId: "I01",
+        expectedRunId: s.eosRuns![0].id,
+        reason: "冻结验收与复验证据齐全，仅批准模拟验证",
+      });
     s = transition(s, "研发", {
       type: "eos",
       action: "next",

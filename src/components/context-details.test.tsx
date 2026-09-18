@@ -15,6 +15,8 @@ describe("compact workspace contract", () => {
     onSelect: noop,
     onContext: noop,
     onDemand: noop,
+    onCommand: noop,
+    onExecution: noop,
     navigate: noop,
     openOps: noop,
   };
@@ -36,6 +38,21 @@ describe("compact workspace contract", () => {
     expect(html).not.toContain("进入协作处理");
     expect(html).not.toContain("追问大脑");
     expect(html).toContain("建议行动");
+  });
+  it("project lists show delivery progress separately and use the action heading", () => {
+    const html = renderToStaticMarkup(
+      <OntologyWorkbench
+        {...props}
+        state={{ ...state, catalogVersion: "v03" }}
+        selectedKind="项目"
+        selectedId=""
+      />,
+    );
+    expect(html).toContain("<th>项目进度</th>");
+    expect(html).toContain("<th>下一步举措</th>");
+    expect(html).toContain("4/8 已完成");
+    expect(html).toContain("50%");
+    expect(html).toContain("ontology-project-progress");
   });
   it("right pane renders only details without relationship tabs or boards", () => {
     const html = renderToStaticMarkup(

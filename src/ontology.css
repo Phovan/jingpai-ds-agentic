@@ -345,6 +345,21 @@
 .ontology-table th:last-child {
   width: 86px;
 }
+.ontology-project-table th:first-child {
+  width: 21%;
+}
+.ontology-project-table th:nth-child(2) {
+  width: 22%;
+}
+.ontology-project-table th:nth-last-child(4) {
+  width: 14%;
+}
+.ontology-project-table th {
+  white-space: nowrap;
+}
+.ontology-project-progress {
+  font-variant-numeric: tabular-nums;
+}
 .ontology-table td {
   padding: 17px 14px;
   vertical-align: top;

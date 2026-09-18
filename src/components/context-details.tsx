@@ -78,6 +78,34 @@ export function EntitySummary({
             <strong>{entity.next}</strong>
           </div>
         </div>
+        {entity.kind === "项目" && entity.delivery && (
+          <div className="delivery-overview" aria-label="项目交付总览">
+            <div>
+              <small>当前阶段</small>
+              <strong>{entity.delivery.stage}</strong>
+              <p>需求 → 计划 → 开发 → 测试 → 交付 / 运行</p>
+            </div>
+            <div>
+              <small>交付完成度</small>
+              <strong>
+                {Math.round(
+                  (entity.delivery.done / entity.delivery.total) * 100,
+                )}
+                % · {entity.delivery.done}/{entity.delivery.total}
+              </strong>
+              <p>{entity.delivery.basis}；非业务 KPI</p>
+            </div>
+            <div>
+              <small>参与方</small>
+              <strong>{entity.delivery.participants}</strong>
+            </div>
+            <div>
+              <small>质量与风险分类</small>
+              <strong>{entity.delivery.riskType}</strong>
+              <p>{entity.delivery.quality}</p>
+            </div>
+          </div>
+        )}
       </section>
       <section className="ontology-risk-strip" aria-label="风险分析">
         <div>

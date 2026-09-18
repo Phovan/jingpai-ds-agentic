@@ -61,7 +61,7 @@ export interface Personal {
   feedback: { id: string; text: string; created: string }[];
 }
 export const emptyPersonal = (): Personal => ({
-  ontologyDefaultsVersion: 2,
+  ontologyDefaultsVersion: 3,
   schema: 1,
   groups: [],
   threads: [],
@@ -104,7 +104,7 @@ export function moveThread(s: Personal, id: string, groupId: string): Personal {
   };
 }
 export function migratePersonalDefaults(s: Personal, role: Role): Personal {
-  if (s.ontologyDefaultsVersion === 2) return s;
+  if ((s.ontologyDefaultsVersion || 0) >= 3) return s;
   const oldDefault =
     role === "研发" &&
     s.ontologyTabs?.length === 2 &&
@@ -112,8 +112,13 @@ export function migratePersonalDefaults(s: Personal, role: Role): Personal {
     s.ontologyTabs.includes("需求");
   return {
     ...s,
-    ontologyDefaultsVersion: 2,
+    ontologyDefaultsVersion: 3,
     ...(oldDefault ? { ontologyTabs: ["需求", "Issue", "系统"] } : {}),
+    ...(role === "PMO" &&
+    s.ontologyTabs?.length === 1 &&
+    s.ontologyTabs[0] === "项目"
+      ? { ontologyTabs: ["项目", "会议"] }
+      : {}),
   };
 }
 function loadPersonal(role: Role): { data: Personal; warning: string } {

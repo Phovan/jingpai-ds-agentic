@@ -49,6 +49,16 @@ describe("shared project categories", () => {
   });
 });
 describe("counted detail tabs", () => {
+  it("hides strategy benefits and people tabs without deleting source data or other views", () => {
+    for (const strategy of catalog.filter(e => e.kind === "战略")) {
+      const titles = populatedDetailTabs(strategy, catalog).map(t => t.title);
+      expect(titles).not.toContain("收益验证");
+      expect(titles).not.toContain("责任人与协作");
+      expect(titles).toContain("战略拆解");
+      expect(dossiers[strategy.id].sections["收益验证"]).toBeTruthy();
+    }
+    expect(populatedDetailTabs(catalog.find(e => e.id === "P02")!, catalog).some(t => t.kinds?.includes("员工"))).toBe(true);
+  });
   it("has no zero or unnumbered tab for every visible record and login role", () => {
     for (const role of LOGIN_ROLES) {
       const visible = catalogEntities(

@@ -6,17 +6,58 @@ import {
 } from "../domain/catalog";
 import type { Entity } from "../domain/ontology";
 import { SourceContent, EntityText } from "./entity-text";
+import type { Command, Role, State } from "../domain/model";
+import { actionsFor, plansFor } from "../domain/delivery";
+import { DeliveryDetail } from "./delivery-detail";
 
 export function CatalogDetail({
   entity,
   entities,
   onSelect,
+  state,
+  role,
+  onCommand,
+  onExecution,
 }: {
   entity: Entity;
   entities: Entity[];
   onSelect: (id: string) => void;
+  state: State;
+  role: Role;
+  onCommand: (c: Command) => void | Promise<void>;
+  onExecution?: (id: string) => void;
 }) {
   const tabs = populatedDetailTabs(entity, entities);
+  const actionCount = actionsFor(state).filter(
+    (a) => a.project === entity.id || a.id === entity.id,
+  ).length;
+  if (actionCount)
+    tabs.splice(entity.kind === "项目" ? 3 : 0, 0, {
+      key: "delivery-actions",
+      title: "问题与行动",
+      count: actionCount,
+      countLabel: "可审核和分派的行动",
+    });
+  if (entity.id === "P03") {
+    const old = tabs.findIndex((t) => t.key === "quality");
+    if (old >= 0) tabs.splice(old, 1);
+    tabs.splice(2, 0, {
+      key: "delivery-quality",
+      title: "质量收敛",
+      count: 6,
+      countLabel: "缺陷记录",
+    });
+  }
+  const plan = plansFor(state).find(
+    (p) => p.demand === entity.id || p.issue === entity.id,
+  );
+  if (plan)
+    tabs.unshift({
+      key: "delivery-plan",
+      title: entity.kind === "Issue" ? "执行计划与审核" : "确认与实施计划",
+      count: 3,
+      countLabel: "需求、计划、执行三个关口",
+    });
   const [selected, setSelected] = useState(tabs[0]?.key || "");
   const tab = tabs.find((t) => t.key === selected) || tabs[0];
   const linked = entities.filter(
@@ -49,6 +90,25 @@ export function CatalogDetail({
         role="tabpanel"
         aria-label={tab.title}
       >
+        {tab.key.startsWith("delivery-") && (
+          <DeliveryDetail
+            id={entity.id}
+            mode={
+              tab.key === "delivery-actions"
+                ? "actions"
+                : tab.key === "delivery-quality"
+                  ? "quality"
+                  : entity.kind === "Issue"
+                    ? "execution"
+                    : "plan"
+            }
+            state={state}
+            role={role}
+            onCommand={onCommand}
+            onSelect={onSelect}
+            onExecution={onExecution}
+          />
+        )}
         {tab.key === "cost" && cost && (
           <div className="dossier-table-wrap">
             <table>

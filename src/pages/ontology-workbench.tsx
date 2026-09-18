@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, Plus, Search, Settings2, Star } from "lucide-react";
-import type { Role, Route, State } from "../domain/model";
+import type { Command, Role, Route, State } from "../domain/model";
 import type { PersonalController } from "../domain/personal";
 import {
   configuredTabs,
@@ -27,6 +27,8 @@ interface Props {
   navigate: (r: Route) => void;
   onDemand: (id: string) => void;
   onContext: (kind: string) => void;
+  onCommand: (c: Command) => void | Promise<void>;
+  onExecution: (id: string) => void;
 }
 export function OntologyWorkbench(p: Props) {
   const entities = visibleEntities(p.state, p.role);
@@ -91,16 +93,22 @@ export function OntologyWorkbench(p: Props) {
     p.onSelect(e.id);
   }
   function table(rows: Entity[], projectColumn = false) {
+    const showProgress =
+      current === "项目" ||
+      (rows.length > 0 && rows.every((e) => e.kind === "项目"));
     return (
       <div className="ontology-table-wrap">
-        <table className="ontology-table">
+        <table
+          className={`ontology-table${showProgress ? " ontology-project-table" : ""}`}
+        >
           <thead>
             <tr>
               <th>名称 / 状态</th>
               {projectColumn && <th>所属项目</th>}
               <th>目标 / 当前差距</th>
+              {showProgress && <th>项目进度</th>}
               <th>主要风险</th>
-              <th>下一步</th>
+              <th>{showProgress ? "下一步举措" : "下一步"}</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -115,6 +123,20 @@ export function OntologyWorkbench(p: Props) {
                     {e.id} · {e.kind === "项目" ? e.domain + " · " : ""}
                     {e.status}
                   </small>
+                  {e.delivery && (
+                    <>
+                      {!showProgress && (
+                        <small>
+                          交付 {e.delivery.done}/{e.delivery.total} ·{" "}
+                          {Math.round(
+                            (e.delivery.done / e.delivery.total) * 100,
+                          )}
+                          %
+                        </small>
+                      )}
+                      <small>{e.delivery.participants}</small>
+                    </>
+                  )}
                 </td>
                 {projectColumn && (
                   <td>
@@ -139,10 +161,32 @@ export function OntologyWorkbench(p: Props) {
                     {e.gap}
                   </small>
                 </td>
+                {showProgress && (
+                  <td className="ontology-project-progress">
+                    {e.delivery ? (
+                      <>
+                        <strong>
+                          {Math.round(
+                            (e.delivery.done / e.delivery.total) * 100,
+                          )}
+                          %
+                        </strong>
+                        <small>
+                          {e.delivery.stage} · {e.delivery.done}/
+                          {e.delivery.total} 已完成
+                        </small>
+                        <small>{e.delivery.basis}</small>
+                      </>
+                    ) : (
+                      <span>{e.progress || "进度待确认"}</span>
+                    )}
+                  </td>
+                )}
                 <td>
                   <span className={e.attention ? "ontology-risk" : ""}>
                     {e.risk}
                   </span>
+                  {e.delivery && <small>{e.delivery.quality}</small>}
                 </td>
                 <td>{e.next}</td>
                 <td>
@@ -259,6 +303,10 @@ export function OntologyWorkbench(p: Props) {
               entity={detail}
               entities={entities}
               onSelect={p.onSelect}
+              state={p.state}
+              role={p.role}
+              onCommand={p.onCommand}
+              onExecution={p.onExecution}
             />
           ) : (
             <>

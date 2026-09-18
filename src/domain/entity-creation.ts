@@ -61,12 +61,45 @@ export function proposedCreation(
   const match = question.match(
     /(?:新增|新建|创建|建立|登记)(?:一[个条份项]|一个新的|新的)?\s*(项目|需求|系统|战略|风险|里程碑|Issue|Impl|版本|组织|员工|供应商|承诺|亮点|报告|资料)/i,
   );
-  if (!match) return;
+  const naturalRequest =
+    ["项目经理", "业务Owner"].includes(role) &&
+    /我(?:需要|想要|希望)[^。！？?]*增加|我发现(?:了)?一个问题[^。！？?]*(?:不能|无法).*上传/.test(
+      question,
+    );
+  if (!match && !naturalRequest) return;
+  const visible = catalogEntities(s, role);
+  const mentioned = [...visible]
+    .sort((a, b) => b.title.length - a.title.length)
+    .find((e) => question.includes(e.title));
+  const parent =
+    (naturalRequest ? mentioned : undefined) ||
+    visible.find((e) => e.id === parentId) ||
+    mentioned;
+  if (!match) {
+    const addition =
+      question.match(/增加\s*[「“"]([^」”"]+)[」”"]/)?.[1] ||
+      question.match(/增加\s*([^，,。；;！？?]+)/)?.[1];
+    const upload =
+      question.match(/上传\s*[「“"]([^」”"]+)[」”"]/)?.[1] ||
+      question.match(/上传\s*([^，,。；;！？?]+)/)?.[1];
+    const title =
+      addition?.trim() || (upload ? `${upload.trim()}上传与校验` : "");
+    if (!title) return;
+    return {
+      requestId: crypto.randomUUID(),
+      kind: "需求",
+      title: title.slice(0, 80),
+      goal: (
+        question.match(/用于[：:\s]*([^；;\n]+)/)?.[1]?.trim() ||
+        `用户反馈：${question}。需核实现有限制、适用范围与验收条件。`
+      ).slice(0, 400),
+      parentId: parent?.id || "",
+      domain: parent?.domain || "未分类",
+    };
+  }
   const kind = CREATE_KINDS.find(
     (k) => k.toLowerCase() === match[1].toLowerCase(),
   )!;
-  const visible = catalogEntities(s, role);
-  const parent = visible.find((e) => e.id === parentId);
   const rest = question
     .slice(match.index! + match[0].length)
     .trim()
